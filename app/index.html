@@ -21,7 +21,7 @@
     html.dark{
       --bg:#0b130d; --card:#121c14; --ink:#e5f1e7; --muted:#93ab98;
       --line:#243a29; --brand:#4ade80; --accent:#4ade80;
-      --ok:#4ade80; --warn:#fbbf24; --danger:#f87171;
+      --ok:#4ade80; --warn:#fbbf24; --danger:#ed3a3a;
     }
     *{box-sizing:border-box}
     html{background:var(--bg)}
@@ -74,6 +74,13 @@
     .cmd-list code{background:var(--bg); border:1px solid var(--line)}
     footer.site{margin-top:28px; color:var(--muted); font-size:.82rem; text-align:center; line-height:1.8}
     footer.site img.footer-logo{display:block; margin:0 auto 14px; height:70px; width:auto}
+    footer.site img.logo-night{display:none}
+    html.dark footer.site img.logo-day{display:none}
+    html.dark footer.site img.logo-night{display:block}
+    @media (prefers-color-scheme: dark){
+      html:not(.light) footer.site img.logo-day{display:none}
+      html:not(.light) footer.site img.logo-night{display:block}
+    }
     .theme-toggle{
       position:fixed; top:14px; right:14px; z-index:10;
       padding:0; background:none; border:none; cursor:pointer;
@@ -205,10 +212,12 @@
     </section>
 
     <footer class="site">
-      <img class="footer-logo" src="resources/logo-escuela.webp" alt="Escuela Colombiana de Ingeniería Julio Garavito">
+      <img class="footer-logo logo-day" src="resources/logo-escuela.webp" alt="Escuela Colombiana de Ingeniería Julio Garavito">
+      <img class="footer-logo logo-night" src="resources/logo-escuela-nocturno.png" alt="Escuela Colombiana de Ingeniería Julio Garavito">
       MuvAutomation Secure Product Challenge · Laboratorio 3 · Uso académico autorizado<br>
       Datos ficticios. No contiene credenciales, correos ni direcciones internas reales.<br>
-      Rangos IP de documentación (RFC 5737). Propietario: Blue Team.
+      Rangos IP de documentación (RFC 5737). Propietario: Blue Team.<br>
+      Por: Tomas Quinceo y Hernán Sánchez.
     </footer>
 
   </div>
