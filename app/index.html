@@ -7,21 +7,32 @@
   <meta name="description" content="Portal de demostración para ejecución remota segura de comandos en routers y switches. Entorno de laboratorio, datos ficticios.">
   <style>
     :root{
-      --bg:#f4f6fb; --card:#ffffff; --ink:#1b2333; --muted:#5b6577;
-      --line:#dde3ef; --brand:#1f3b73; --accent:#2f6feb;
-      --ok:#1c7c4a; --warn:#9a6b00; --danger:#a12d2d;
+      --bg:#f1f7f1; --card:#ffffff; --ink:#15281b; --muted:#4e6b55;
+      --line:#d3e4d5; --brand:#14532d; --accent:#15803d;
+      --ok:#166534; --warn:#b45309; --danger:#b91c1c;
     }
     @media (prefers-color-scheme: dark){
-      :root{
-        --bg:#0e131c; --card:#161d2a; --ink:#e7ecf5; --muted:#9aa6b8;
-        --line:#26303f; --brand:#8fb2ff; --accent:#6ea0ff;
-        --ok:#4fd18b; --warn:#e0b25a; --danger:#f08a8a;
+      :root:not(.light){
+        --bg:#0b130d; --card:#121c14; --ink:#e5f1e7; --muted:#93ab98;
+        --line:#243a29; --brand:#4ade80; --accent:#4ade80;
+        --ok:#4ade80; --warn:#fbbf24; --danger:#f87171;
       }
     }
+    html.dark{
+      --bg:#0b130d; --card:#121c14; --ink:#e5f1e7; --muted:#93ab98;
+      --line:#243a29; --brand:#4ade80; --accent:#4ade80;
+      --ok:#4ade80; --warn:#fbbf24; --danger:#f87171;
+    }
     *{box-sizing:border-box}
+    html{background:var(--bg)}
     body{
-      margin:0; background:var(--bg); color:var(--ink);
+      margin:0; background:transparent; color:var(--ink);
       font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    }
+    body::before{
+      content:""; position:fixed; inset:0; z-index:-1;
+      background:url(resources/logo-escuela.webp) center/cover no-repeat;
+      filter:blur(20px); opacity:.95;
     }
     a{color:var(--accent)}
     .wrap{max-width:960px; margin:0 auto; padding:24px 20px 64px}
@@ -62,10 +73,51 @@
     .cmd-list{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px}
     .cmd-list code{background:var(--bg); border:1px solid var(--line)}
     footer.site{margin-top:28px; color:var(--muted); font-size:.82rem; text-align:center; line-height:1.8}
+    footer.site img.footer-logo{display:block; margin:0 auto 14px; height:70px; width:auto}
+    .theme-toggle{
+      position:fixed; top:14px; right:14px; z-index:10;
+      padding:0; background:none; border:none; cursor:pointer;
+      box-shadow:0 2px 8px rgba(0,0,0,.12); border-radius:999px;
+    }
+    .toggle-track{
+      position:relative; display:block; width:64px; height:30px;
+      border-radius:999px; background:var(--card); border:1px solid var(--line);
+      transition:border-color .2s;
+    }
+    .theme-toggle:hover .toggle-track{border-color:var(--accent)}
+    .toggle-icon{
+      position:absolute; top:50%; transform:translateY(-50%);
+      width:16px; height:16px; display:block; pointer-events:none;
+    }
+    .toggle-sun{left:6px; color:#f59e0b}
+    .toggle-moon{right:6px; color:#64748b}
+    html.dark .toggle-moon{color:#a5b4fc}
+    .toggle-thumb{
+      position:absolute; top:3px; left:3px; width:22px; height:22px;
+      border-radius:50%; background:var(--brand);
+      transition:transform .25s ease, background .25s ease;
+    }
+    html.dark .toggle-thumb{transform:translateX(34px)}
     .scroll{overflow-x:auto}
   </style>
 </head>
 <body>
+  <button type="button" class="theme-toggle" id="themeToggle" aria-label="Cambiar modo nocturno / día" role="switch">
+    <span class="toggle-track">
+      <span class="toggle-icon toggle-sun" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        </svg>
+      </span>
+      <span class="toggle-icon toggle-moon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </span>
+      <span class="toggle-thumb"></span>
+    </span>
+  </button>
   <div class="wrap">
 
     <header class="site">
@@ -153,11 +205,30 @@
     </section>
 
     <footer class="site">
+      <img class="footer-logo" src="resources/logo-escuela.webp" alt="Escuela Colombiana de Ingeniería Julio Garavito">
       MuvAutomation Secure Product Challenge · Laboratorio 3 · Uso académico autorizado<br>
       Datos ficticios. No contiene credenciales, correos ni direcciones internas reales.<br>
       Rangos IP de documentación (RFC 5737). Propietario: Blue Team.
     </footer>
 
   </div>
+  <script>
+    (function () {
+      var btn = document.getElementById('themeToggle');
+      var root = document.documentElement;
+      function render(mode) {
+        root.classList.toggle('dark', mode === 'dark');
+        root.classList.toggle('light', mode === 'light');
+        btn.setAttribute('aria-checked', mode === 'dark' ? 'true' : 'false');
+        btn.title = mode === 'dark' ? 'Cambiar a modo día' : 'Cambiar a modo noche';
+      }
+      render(localStorage.getItem('muv-theme') || '');
+      btn.addEventListener('click', function () {
+        var next = root.classList.contains('dark') ? 'light' : 'dark';
+        localStorage.setItem('muv-theme', next);
+        render(next);
+      });
+    })();
+  </script>
 </body>
 </html>
