@@ -33,3 +33,39 @@ export interface NewSession {
   comando: string;
   operador: string;
 }
+
+export interface StatusRun {
+  runId: string;
+  operador: string;
+  total: number;
+  completados: number;
+  estado: string;
+  iniciadoEn: string;
+  finalizadoEn?: string;
+}
+
+export interface StatusCheck {
+  runId: string;
+  hostname: string;
+  gestion: string;
+  estado: string;
+  latenciaMs: number;
+  detalle: string;
+  timestamp: string;
+}
+
+export interface StatusEvent {
+  type: string;
+  runId: string;
+  operador?: string;
+  hostname?: string;
+  estado?: string;
+  latenciaMs?: number;
+  detalle?: string;
+  completados?: number;
+  total?: number;
+  resumen?: Record<string, number>;
+  timestamp: string;
+}
+
+export type StreamPayload = Partial<StatusEvent> & { error?: string };

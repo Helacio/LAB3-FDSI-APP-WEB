@@ -2,7 +2,10 @@ module muvautomation/backend
 
 go 1.27.1
 
-require go.mongodb.org/mongo-driver/v2 v2.9.1
+require (
+	github.com/rabbitmq/amqp091-go v1.15.0
+	go.mongodb.org/mongo-driver/v2 v2.9.1
+)
 
 require (
 	github.com/klauspost/compress v1.19.2 // indirect

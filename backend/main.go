@@ -23,6 +23,7 @@ const (
 	defaultPort     = "8080"
 	defaultMongoURI = "mongodb://127.0.0.1:27017"
 	defaultMongoDB  = "muvautomation"
+	defaultBroker   = "amqp://guest:guest@127.0.0.1:5672/"
 
 	envEntorno     = "LAB"
 	envPropietario = "Blue Team"
@@ -47,7 +48,9 @@ type session struct {
 }
 
 type server struct {
-	db *mongo.Database
+	db     *mongo.Database
+	broker Broker
+	status *statusManager
 }
 
 func envOr(key, fallback string) string {
@@ -390,7 +393,25 @@ func main() {
 		log.Fatalf("no se pudo sembrar la base de datos: %v", err)
 	}
 
-	s := &server{db: db}
+	brokerURL := envOr("BROKER_URL", defaultBroker)
+	broker, err := newRabbitBroker(brokerURL)
+	if err != nil {
+		log.Fatalf("no se pudo conectar a RabbitMQ en %s: %v", brokerURL, err)
+	}
+	defer broker.Close()
+	log.Printf("conectado a RabbitMQ en %s", brokerURL)
+
+	workers := 4
+	if n, err := strconv.Atoi(envOr("STATUS_WORKERS", "4")); err == nil && n > 0 {
+		workers = n
+	}
+	interval := 60 * time.Second
+	if d, err := time.ParseDuration(envOr("STATUS_INTERVAL", "60s")); err == nil {
+		interval = d
+	}
+	statusMgr := newStatusManager(db, broker, workers)
+
+	s := &server{db: db, broker: broker, status: statusMgr}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", s.handleStatus)
 	mux.HandleFunc("GET /api/kpis", s.handleKpis)
@@ -400,6 +421,11 @@ func main() {
 	mux.HandleFunc("GET /api/sessions", s.handleSessions)
 	mux.HandleFunc("POST /api/sessions", s.handleCreateSession)
 	mux.HandleFunc("GET /api/healthz", s.handleHealth)
+	mux.HandleFunc("POST /api/status/checks", s.handleStartStatusCheck)
+	mux.HandleFunc("GET /api/status/stream", s.handleStatusStream)
+	mux.HandleFunc("GET /api/status/runs", s.handleStatusRuns)
+	mux.HandleFunc("GET /api/status/runs/{runId}", s.handleStatusRun)
+	mux.HandleFunc("GET /api/status/latest", s.handleStatusLatest)
 
 	httpServer := &http.Server{
 		Addr:         port,
@@ -408,6 +434,15 @@ func main() {
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
+	go func() {
+		if err := statusMgr.RunWorkers(appCtx); err != nil {
+			log.Fatalf("worker pool de status detenido: %v", err)
+		}
+	}()
+	go statusMgr.RunScheduler(appCtx, interval)
 
 	go func() {
 		log.Printf("backend MuvAutomation escuchando en %s", port)
@@ -421,6 +456,7 @@ func main() {
 	<-sig
 
 	log.Println("deteniendo servidor...")
+	appCancel()
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	_ = httpServer.Shutdown(shutdownCtx)

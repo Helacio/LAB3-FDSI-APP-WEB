@@ -87,6 +87,16 @@
   </section>
 
   <section>
+    <h2>Monitoreo de estado de routers (RabbitMQ + SSE)</h2>
+    <p>
+      La revisión se despacha por una cola de RabbitMQ y un pool de workers procesa un job por
+      dispositivo. El progreso llega en vivo por <strong>Server-Sent Events</strong> y cada
+      resultado queda persistido en <code>status_checks</code>.
+    </p>
+    <app-status-monitor [devices]="inventory()" />
+  </section>
+
+  <section>
     <h2>Flujo de una orden</h2>
     <p style="margin: 0">
       Operador → <code>Portal Angular (HTTP)</code> → <code>Backend Go + MongoDB</code> →

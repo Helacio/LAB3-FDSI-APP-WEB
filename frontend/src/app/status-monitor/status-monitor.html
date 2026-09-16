@@ -1,0 +1,75 @@
+<div class="status-toolbar">
+  <button type="button" (click)="start()" [disabled]="phase() === 'running'">
+    {{ phase() === 'running' ? 'Revisando…' : 'Revisar estados' }}
+  </button>
+
+  @if (live()) {
+    <span class="live"><span class="live-dot"></span> en vivo</span>
+  }
+
+  @if (phase() === 'running') {
+    <span class="muted">{{ completados() }}/{{ total() }} dispositivos</span>
+  }
+  @if (phase() === 'done') {
+    <span class="muted">Revisión completada · run {{ runId().slice(0, 8) }}</span>
+  }
+</div>
+
+@if (phase() === 'running' || phase() === 'done') {
+  <div class="progress">
+    <div class="progress-bar" [style.width.%]="percent()"></div>
+  </div>
+}
+
+@if (error()) {
+  <p class="form-error">{{ error() }}</p>
+}
+
+@if (summary(); as resumen) {
+  <p class="summary">
+    @for (entry of summaryEntries(); track entry[0]) {
+      <span [class]="'tag ' + estadoClass(entry[0])">{{ entry[0] }}: {{ entry[1] }}</span>
+    }
+  </p>
+}
+
+<div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Dispositivo</th>
+        <th>Gestión</th>
+        <th>Estado</th>
+        <th>Latencia</th>
+        <th>Detalle</th>
+        <th>Hora</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (device of devices(); track device.hostname) {
+        <tr>
+          <td>{{ device.hostname }}</td>
+          <td>{{ device.gestion }}</td>
+          <td>
+            @if (isPending(device.hostname)) {
+              <span class="tag warn">pendiente</span>
+            } @else {
+              @if (checkFor(device.hostname); as check) {
+                <span [class]="'tag ' + estadoClass(check.estado)">{{ check.estado }}</span>
+              } @else {
+                <span class="tag">sin datos</span>
+              }
+            }
+          </td>
+          <td>{{ formatLatency(checkFor(device.hostname)) }}</td>
+          <td class="muted">{{ checkFor(device.hostname)?.detalle ?? '—' }}</td>
+          <td>{{ formatTime(checkFor(device.hostname)?.timestamp) }}</td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="6" class="empty">Sin dispositivos para revisar.</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

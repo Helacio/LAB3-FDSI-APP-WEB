@@ -5,11 +5,12 @@ import { CommandCatalog } from './command-catalog/command-catalog';
 import { InventoryTable } from './inventory-table/inventory-table';
 import { Device, Kpis, Session, StatusInfo } from './models';
 import { SessionLog } from './session-log/session-log';
+import { StatusMonitor } from './status-monitor/status-monitor';
 import { ThemeToggle } from './theme-toggle/theme-toggle';
 
 @Component({
   selector: 'app-root',
-  imports: [ThemeToggle, InventoryTable, CommandCatalog, SessionLog],
+  imports: [ThemeToggle, InventoryTable, CommandCatalog, SessionLog, StatusMonitor],
   styleUrl: './app.css',
   templateUrl: './app.html',
 })

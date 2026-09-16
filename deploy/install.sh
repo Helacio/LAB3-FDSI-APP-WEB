@@ -53,6 +53,15 @@ fi
 log "habilitando mongod"
 systemctl enable --now mongod
 
+# --- RabbitMQ (message broker) ---
+if ! command -v rabbitmq-server >/dev/null 2>&1; then
+  log "instalando RabbitMQ"
+  apt-get update
+  apt-get install -y rabbitmq-server
+fi
+log "habilitando rabbitmq-server"
+systemctl enable --now rabbitmq-server
+
 # --- Usuario de sistema y directorios ---
 if ! id "$APP_USER" >/dev/null 2>&1; then
   log "creando usuario $APP_USER"
