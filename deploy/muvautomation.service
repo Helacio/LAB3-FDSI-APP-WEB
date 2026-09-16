@@ -1,0 +1,28 @@
+[Unit]
+Description=MuvAutomation backend (Go + MongoDB)
+Documentation=https://github.com/lab3-fdsi
+After=network-online.target mongod.service
+Wants=network-online.target
+Requires=mongod.service
+
+[Service]
+Type=simple
+User=muvautomation
+Group=muvautomation
+WorkingDirectory=/opt/muvautomation
+Environment=PORT=8080
+Environment=MONGO_URI=mongodb://127.0.0.1:27017
+Environment=MONGO_DB=muvautomation
+ExecStart=/opt/muvautomation/muvbackend
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

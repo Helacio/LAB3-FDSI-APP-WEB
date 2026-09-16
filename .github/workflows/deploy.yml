@@ -2,25 +2,102 @@ name: Deploy a Azure VM Ubuntu
 on:
   push:
     branches: [main]
+
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Copiar archivos a la VM
-        uses: appleboy/scp-action@v0.1.7
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
         with:
-          host: ${{ secrets.AZURE_VM_HOST }}
-          username: ${{ secrets.AZURE_VM_USER }}
-          key: ${{ secrets.AZURE_VM_SSH_KEY }}
-          source: "app"
-          strip_components: 1
-          target: "/var/www/muvautomation"
-      - name: Recargar nginx
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend Angular
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build -- --configuration production
+
+      - name: Configurar Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build backend Go
+        working-directory: backend
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o muvbackend .
+
+      - name: Publicar frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/frontend/browser
+
+      - name: Publicar backend
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-bin
+          path: backend/muvbackend
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descargar frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: staging/frontend
+
+      - name: Descargar backend
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-bin
+          path: staging
+
+      - name: Preparar staging
+        run: |
+          cp nginx/muvautomation.conf staging/
+          cp deploy/muvautomation.service staging/
+          cp deploy/install.sh staging/
+          chmod +x staging/install.sh
+          ls -la staging
+
+      - name: Preparar directorio temporal en la VM
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.AZURE_VM_HOST }}
           username: ${{ secrets.AZURE_VM_USER }}
           key: ${{ secrets.AZURE_VM_SSH_KEY }}
           script: |
+            rm -rf /tmp/muv-deploy
+            mkdir -p /tmp/muv-deploy
+
+      - name: Copiar artefactos a la VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key: ${{ secrets.AZURE_VM_SSH_KEY }}
+          source: "staging/"
+          strip_components: 1
+          target: "/tmp/muv-deploy"
+
+      - name: Instalar y recargar servicios
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key: ${{ secrets.AZURE_VM_SSH_KEY }}
+          script: |
+            sudo bash /tmp/muv-deploy/install.sh /tmp/muv-deploy
             sudo nginx -t && sudo systemctl reload nginx

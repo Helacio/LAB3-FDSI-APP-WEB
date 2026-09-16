@@ -1,0 +1,33 @@
+<div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Hostname</th>
+        <th>Tipo</th>
+        <th>Sitio</th>
+        <th>Rol</th>
+        <th>Gestión</th>
+        <th>Estado</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (device of devices(); track device.hostname) {
+        <tr>
+          <td>{{ device.hostname }}</td>
+          <td>{{ device.tipo }}</td>
+          <td>{{ device.sitio }}</td>
+          <td>{{ device.rol }}</td>
+          <td>{{ device.gestion }}</td>
+          <td><span [class]="'tag ' + estadoClass(device.estado)">{{ device.estado }}</span></td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="6" class="empty">Sin dispositivos registrados.</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
+<p style="margin-top: 12px">
+  Versión en texto plano: <a href="/api/inventory.txt">/api/inventory.txt</a>
+</p>
