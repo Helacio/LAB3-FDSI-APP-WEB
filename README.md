@@ -36,6 +36,76 @@ Navegador ──HTTP:80──> nginx ──/ ───────────�
 Además del botón manual, un **scheduler** dispara una revisión periódica
 (`STATUS_INTERVAL`, por defecto `60s`; `0` lo desactiva).
 
+## Cambios implementados
+
+Cambios de esta entrega (rama `feature/router-status-broker-sse`), sobre la migración
+previa a Angular + Go + MongoDB.
+
+### Backend (Go + RabbitMQ + SSE)
+
+| Archivo | Cambio |
+|---|---|
+| `backend/broker.go` | **Nuevo.** Interfaz `Broker` (`PublishJob`, `ConsumeJobs`, `PublishEvent`, `SubscribeEvents`, `Close`) y su implementación `rabbitBroker` sobre `amqp091-go`. Declara la cola durable `router.status.jobs` (ack manual, prefetch = nº de workers) y el exchange fanout `router.status.events`. `SubscribeEvents` crea una cola exclusiva/auto-delete por cliente SSE. |
+| `backend/status.go` | **Nuevo.** `statusManager` con `StartRun` (crea el run, publica `run.started` y encola un job por dispositivo), `RunWorkers` (pool de workers), `handleJob` (chequeo con latencia artificial, inserta en `status_checks`, actualiza `devices.estado`, publica `check.result`), `finalizeRun` (calula el resumen, marca el run como `finalizado` y publica `run.finished`), `RunScheduler` (disparo periódico) y los handlers HTTP. Incluye `simulateCheck()` (estado ponderado) y `newID()` (UUID v4). |
+| `backend/sse.go` | **Nuevo.** `handleStatusStream`: respuesta `text/event-stream`, cabecera `X-Accel-Buffering: no`, heartbeat cada 15s, filtro por `runId` y desactivación del `WriteTimeout` con `http.NewResponseController`. Emite `stream.error` si el broker no está disponible. |
+| `backend/main.go` | Añade `Broker` y `statusManager` a `server`; lee `BROKER_URL`, `STATUS_WORKERS` y `STATUS_INTERVAL`; registra las rutas de status, arranca el pool de workers y el scheduler. Falla al inicio si RabbitMQ no es alcanzable. |
+| `backend/go.mod` / `go.sum` | Nueva dependencia `github.com/rabbitmq/amqp091-go v1.15.0`. |
+
+### Frontend (Angular)
+
+| Archivo | Cambio |
+|---|---|
+| `frontend/src/app/models.ts` | Tipos `StatusRun`, `StatusCheck`, `StatusEvent` y `StreamPayload`. |
+| `frontend/src/app/api.service.ts` | Métodos `startStatusRun`, `getStatusRun`, `getRecentRuns`, `getLatestStatus` y `statusStreamUrl`. |
+| `frontend/src/app/status-monitor/status-monitor.ts` | **Nuevo.** Componente del monitor: signals de fase/runId/progreso/pendientes/resultados/resumen, `EventSource` con listeners `run.started`, `check.result`, `run.finished` y `stream.error`, y helpers de formato. |
+| `frontend/src/app/status-monitor/status-monitor.html` | **Nuevo.** Botón "Revisar estados", indicador *en vivo*, barra de progreso, resumen por estado y tabla por dispositivo. |
+| `frontend/src/app/app.ts` / `app.html` | Registran y ubican `<app-status-monitor [devices]="inventory()" />` en una nueva sección. |
+| `frontend/src/styles.css` | Estilos de `.status-toolbar`, `.progress`, `.live-dot`, `.summary` y `.muted`. |
+
+### Infraestructura y despliegue
+
+| Archivo | Cambio |
+|---|---|
+| `nginx/muvautomation.conf` | Nueva `location = /api/status/stream` con `proxy_buffering off`, `proxy_cache off`, `proxy_read_timeout 1h` y `chunked_transfer_encoding on`. |
+| `deploy/install.sh` | Instala y habilita `rabbitmq-server` además de MongoDB y nginx. |
+| `deploy/muvautomation.service` | `Requires=rabbitmq-server.service` y variables `BROKER_URL`, `STATUS_WORKERS` y `STATUS_INTERVAL`. |
+| `README.md` | Documenta el broker, el flujo SSE y las variables nuevas. |
+
+### Flujo de mensajes
+
+```
+POST /api/status/checks
+        │  (un job por dispositivo)
+        ▼
+router.status.jobs  ──►  workers Go (STATUS_WORKERS)
+        │                        │ guarda en status_checks
+        │                        │ actualiza devices.estado
+        │                        ▼
+        │              publish a exchange fanout
+        │                        │
+        │                        ▼
+        │            router.status.events (fanout)
+        │                        │
+        └──────────►   cola exclusiva por cliente SSE  ──►  navegador
+```
+
+### Variables de entorno nuevas
+
+| Variable | Por defecto | Descripción |
+|---|---|---|
+| `BROKER_URL` | `amqp://guest:guest@127.0.0.1:5672/` | Cadena de conexión a RabbitMQ. |
+| `STATUS_WORKERS` | `4` | Tamaño del pool de workers que procesan los jobs. |
+| `STATUS_INTERVAL` | `60s` | Periodo del run automático (`0` lo desactiva). |
+
+### Eventos SSE
+
+| Evento | Carga útil |
+|---|---|
+| `run.started` | `runId`, `operador`, `total`, `timestamp` |
+| `check.result` | `runId`, `hostname`, `estado`, `latenciaMs`, `detalle`, `completados`, `total`, `timestamp` |
+| `run.finished` | `runId`, `completados`, `total`, `resumen`, `timestamp` |
+| `stream.error` | `error` (el broker no está disponible) |
+
 ## Estructura del repositorio
 
 | Ruta | Descripción |
@@ -156,12 +226,14 @@ sudo ./install.sh /ruta/al/staging
 
 ## Antes vs Ahora
 
-| Aspecto | Antes (HTML estático) | Ahora (Angular + Go + MongoDB) |
+| Aspecto | Antes (HTML estático) | Ahora (Angular + Go + MongoDB + RabbitMQ) |
 |---|---|---|
 | Frontend | `app/index.html` con contenido fijo | SPA Angular que consume la API |
 | Datos | Hardcodeados en el HTML | Persistidos en MongoDB (`devices`, `commands`, `sessions`) |
 | Backend | No existía (solo nginx) | API Go en `127.0.0.1:8080` |
 | Bitácora | No existía | Colección `sessions` con registro de órdenes |
+| Revisión de estados | No existía | Jobs en RabbitMQ + workers + resultados en `status_checks`, con progreso en vivo por SSE |
+| Mensajería | No existía | Cola `router.status.jobs` y exchange fanout `router.status.events` |
 | Despliegue | `scp` de `app/*` | CI compila Angular + Go y ejecuta `install.sh` |
 
 ## Dónde está publicado
