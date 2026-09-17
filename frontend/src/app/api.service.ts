@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { Device, Kpis, NewSession, Session, StatusInfo } from './models';
+import { Device, Kpis, NewSession, Session, StatusCheck, StatusInfo, StatusRun } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -31,5 +31,28 @@ export class ApiService {
 
   createSession(payload: NewSession): Observable<Session> {
     return this.http.post<Session>(`${this.base}/sessions`, payload);
+  }
+
+  startStatusRun(operador = 'portal'): Observable<{ runId: string; total: number }> {
+    return this.http.post<{ runId: string; total: number }>(`${this.base}/status/checks`, { operador });
+  }
+
+  getStatusRun(runId: string): Observable<{ run: StatusRun; checks: StatusCheck[] }> {
+    return this.http.get<{ run: StatusRun; checks: StatusCheck[] }>(
+      `${this.base}/status/runs/${runId}`,
+    );
+  }
+
+  getRecentRuns(limit = 10): Observable<StatusRun[]> {
+    const params = new HttpParams().set('limit', limit);
+    return this.http.get<StatusRun[]>(`${this.base}/status/runs`, { params });
+  }
+
+  getLatestStatus(): Observable<StatusCheck[]> {
+    return this.http.get<StatusCheck[]>(`${this.base}/status/latest`);
+  }
+
+  statusStreamUrl(runId: string): string {
+    return `${this.base}/status/stream?runId=${encodeURIComponent(runId)}`;
   }
 }

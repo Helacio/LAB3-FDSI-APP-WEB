@@ -1,9 +1,9 @@
 [Unit]
-Description=MuvAutomation backend (Go + MongoDB)
+Description=MuvAutomation backend (Go + MongoDB + RabbitMQ)
 Documentation=https://github.com/lab3-fdsi
-After=network-online.target mongod.service
+After=network-online.target mongod.service rabbitmq-server.service
 Wants=network-online.target
-Requires=mongod.service
+Requires=mongod.service rabbitmq-server.service
 
 [Service]
 Type=simple
@@ -13,6 +13,9 @@ WorkingDirectory=/opt/muvautomation
 Environment=PORT=8080
 Environment=MONGO_URI=mongodb://127.0.0.1:27017
 Environment=MONGO_DB=muvautomation
+Environment=BROKER_URL=amqp://guest:guest@127.0.0.1:5672/
+Environment=STATUS_WORKERS=4
+Environment=STATUS_INTERVAL=60s
 ExecStart=/opt/muvautomation/muvbackend
 Restart=on-failure
 RestartSec=5
