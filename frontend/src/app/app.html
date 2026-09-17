@@ -1,0 +1,107 @@
+<app-theme-toggle />
+<div class="wrap">
+
+  <header class="site">
+    <div class="logo">MA</div>
+    <div>
+      <h1>MuvAutomation · Portal de Ejecución Remota Segura</h1>
+      <p>Consola de demostración para operar routers y switches sin acceso directo al dispositivo</p>
+    </div>
+  </header>
+
+  <div class="banner">
+    <strong>Entorno: {{ status()?.entorno ?? 'LAB' }}.</strong>
+    {{ status()?.aviso ?? 'Todos los datos son ficticios.' }}
+    Este portal se publica por HTTP y sin autenticación como línea base del Laboratorio 3
+    (Red Team + Blue Team). La confidencialidad, la identidad y los roles se incorporan en el
+    Laboratorio 4.
+  </div>
+
+  @if (state() === 'loading') {
+    <p class="notice">Cargando información desde el backend…</p>
+  }
+  @if (state() === 'error') {
+    <p class="notice error">{{ error() }}</p>
+  }
+
+  <div class="grid">
+    <div class="kpi">
+      <span>Dispositivos gestionados</span>
+      <b>{{ kpis()?.dispositivosGestionados ?? '…' }}</b>
+    </div>
+    <div class="kpi">
+      <span>Comandos permitidos</span>
+      <b>{{ kpis()?.comandosPermitidos ?? '…' }}</b>
+    </div>
+    <div class="kpi">
+      <span>Sesiones de hoy</span>
+      <b>{{ kpis()?.sesionesHoy ?? '…' }}</b>
+    </div>
+    <div class="kpi">
+      <span>Propietario</span>
+      <b>{{ kpis()?.propietario ?? status()?.propietario ?? '…' }}</b>
+    </div>
+  </div>
+
+  <section>
+    <h2>¿Qué es la ejecución remota segura?</h2>
+    <p>
+      En lugar de que un operador se conecte por SSH o Telnet directamente a cada equipo,
+      toda orden pasa por un <strong>bastión intermedio</strong> que aplica controles antes
+      de tocar el router o el switch. El objetivo es que ninguna acción sobre la red quede
+      sin identidad, sin registro y sin límite.
+    </p>
+    <ul class="controls">
+      <li><strong>Bastión único de salida:</strong> los dispositivos solo aceptan sesiones desde el segmento del bastión.</li>
+      <li><strong>Lista blanca de comandos:</strong> únicamente se ejecutan comandos de lectura previamente aprobados (ver catálogo).</li>
+      <li><strong>Sesión por dispositivo:</strong> cada ejecución abre y cierra su propia sesión, sin sesiones persistentes.</li>
+      <li><strong>Bitácora completa:</strong> origen, destino, comando, timestamp UTC y responsable se guardan por cada orden.</li>
+      <li><strong>Sin credenciales en el cliente:</strong> el navegador nunca recibe usuarios ni llaves de los equipos.</li>
+      <li><strong>Pendiente para Lab 4:</strong> HTTPS, autenticación con MFA, roles (lectura / cambio) y firma de la bitácora.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Inventario de dispositivos (demostración)</h2>
+    <app-inventory-table [devices]="inventory()" />
+  </section>
+
+  <section>
+    <h2>Catálogo de comandos permitidos</h2>
+    <p>Solo lectura. Cualquier comando de configuración se rechaza y queda registrado como intento.</p>
+    <app-command-catalog [commands]="commands()" />
+  </section>
+
+  <section>
+    <h2>Bitácora de órdenes (MongoDB)</h2>
+    <p>
+      Cada orden ejecutada desde el portal se persiste en la colección <code>sessions</code>.
+      Este formulario registra una orden de demostración para evidenciar la persistencia.
+    </p>
+    <app-session-log
+      [sessions]="sessions()"
+      [devices]="inventory()"
+      [commands]="commands()"
+      (created)="onSessionCreated()"
+    />
+  </section>
+
+  <section>
+    <h2>Flujo de una orden</h2>
+    <p style="margin: 0">
+      Operador → <code>Portal Angular (HTTP)</code> → <code>Backend Go + MongoDB</code> →
+      validación de comando y destino → sesión efímera al equipo →
+      salida devuelta al operador + registro en la bitácora.
+    </p>
+  </section>
+
+  <footer class="site">
+    <img class="footer-logo logo-day" src="resources/logo-escuela.webp" alt="Escuela Colombiana de Ingeniería Julio Garavito">
+    <img class="footer-logo logo-night" src="resources/logo-escuela-nocturno.png" alt="Escuela Colombiana de Ingeniería Julio Garavito">
+    MuvAutomation Secure Product Challenge · Laboratorio 3 · Uso académico autorizado<br>
+    Datos ficticios. No contiene credenciales, correos ni direcciones internas reales.<br>
+    Rangos IP de documentación (RFC 5737). Propietario: Blue Team.<br>
+    Por: Tomas Quinceo y Hernán Sánchez.
+  </footer>
+
+</div>

@@ -1,0 +1,82 @@
+<form class="session-form" (submit)="submit($event)">
+  <div class="field">
+    <label for="session-device">Dispositivo</label>
+    <select
+      id="session-device"
+      [value]="dispositivo()"
+      (change)="dispositivo.set($any($event.target).value)"
+    >
+      <option value="">-- selecciona --</option>
+      @for (device of devices(); track device.hostname) {
+        <option [value]="device.hostname">{{ device.hostname }} · {{ device.sitio }}</option>
+      }
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="session-command">Comando (solo lectura)</label>
+    <select
+      id="session-command"
+      [value]="comando()"
+      (change)="comando.set($any($event.target).value)"
+    >
+      <option value="">-- selecciona --</option>
+      @for (command of commands(); track command) {
+        <option [value]="command">{{ command }}</option>
+      }
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="session-operator">Operador</label>
+    <input
+      id="session-operator"
+      type="text"
+      placeholder="Anónimo"
+      [value]="operador()"
+      (input)="operador.set($any($event.target).value)"
+    />
+  </div>
+
+  <div class="field actions">
+    <button type="submit" [disabled]="sending()">
+      {{ sending() ? 'Registrando…' : 'Ejecutar orden' }}
+    </button>
+  </div>
+
+  @if (message()) {
+    <p class="form-ok">{{ message() }}</p>
+  }
+  @if (error()) {
+    <p class="form-error">{{ error() }}</p>
+  }
+</form>
+
+<div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Timestamp (UTC)</th>
+        <th>Dispositivo</th>
+        <th>Comando</th>
+        <th>Operador</th>
+        <th>Resultado</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (session of sessions(); track session.timestamp + session.comando) {
+        <tr>
+          <td>{{ formatTime(session.timestamp) }}</td>
+          <td>{{ session.dispositivo }}</td>
+          <td><code>{{ session.comando }}</code></td>
+          <td>{{ session.operador }}</td>
+          <td><span class="tag ok">{{ session.resultado }}</span></td>
+        </tr>
+      } @empty {
+        <tr>
+          <td colspan="5" class="empty">Todavía no hay órdenes registradas.</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
