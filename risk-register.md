@@ -12,8 +12,8 @@ Estado: `corregido` | `mitigado` | `aceptado` | `pendiente Lab 3.2`
 | R6 | Inventario público con más datos de los necesarios | H6 | `app/public-inventory.txt` (versión git) | reducción de exposición, antes/después en Git | versión amplia | versión mínima | Mitigado |
 | R7 | Sin autenticación ni roles: spoofing de operador | H5 | H5 en `docs/threat-model.md` | fuera de alcance Lab 3 | — | — | Pendiente Lab 4 (identidad, MFA, roles) |
 | R8 | Sin trazabilidad de identidad: repudio de acciones | H3 | `access.log` sin usuario | línea de tiempo Purple Team con timestamp UTC | sin correlación | eventos correlacionados | Mitigado (parcial) |
-| R9 | Firewall de host deshabilitado (UFW inactivo) | — | `sudo ufw status` → inactive; escaneo zgrab/0.x desde Internet en access.log | Paso 5: `ufw default deny incoming`, `allow OpenSSH`, `allow 80/tcp` | puerto 80 expuesto a todo Internet; 8080/5672/4369/25672 escuchando en 0.0.0.0 | UFW active, solo 22 y 80 abiertos; retest en `evidence/blue/ufw_status.txt` | Corregido (80 abierto a todos: aceptado) |
-| R10 | Detección 404 ciega ante SPA (falsos negativos) | — | `evidence/blue/top_404.txt`: `/noexiste-xyz` → 200 | documentar limitación; alternativa: monitorear status del backend en 8080 o respuestas `deny all` | regla de 404 inefectiva en SPA | limitación documentada | Aceptado |
+| R9 | Firewall de host deshabilitado (UFW inactivo) | — | `sudo ufw status` → inactive; escaneo zgrab/0.x desde internet en access.log | Paso 5: `ufw default deny incoming`, `allow OpenSSH`, `allow 80/tcp` | puerto 80 expuesto a todo Internet; 8080/5672/4369/25672 escuchando en 0.0.0.0 | UFW active, solo 22 y 80 abiertos; retest en `evidence/blue/ufw_status.txt` | Corregido (80 abierto a todos: aceptado) |
+| R10 | Detección 404 ciega ante SPA (falsos negativos) | — | `evidence/blue/top_404.txt`: `/noexiste-xyz` → 200 | documentar limitación, alternativa: monitorear status del backend en 8080 o respuestas `deny all` | regla de 404 inefectiva en SPA | limitación documentada | Aceptado |
 
 ## Riesgos a mitigar para Laboratorio 3.2
 
