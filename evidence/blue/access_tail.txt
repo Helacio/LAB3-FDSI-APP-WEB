@@ -1,0 +1,16 @@
+# access.log — tail (capturado 2026-09-23 00:11 UTC)
+
+13.89.125.87 - - [23/Sep/2026:00:06:49 +0000] "GET / HTTP/1.1" 200 798 "-" "Mozilla/5.0 zgrab/0.x"
+127.0.0.1 - - [23/Sep/2026:00:07:05 +0000] "GET / HTTP/1.1" 200 1256 "-" "curl/8.5.0"
+181.63.24.35 - - [23/Sep/2026:00:10:39 +0000] "GET / HTTP/1.1" 200 1256 "-" "curl/8.21.0"
+181.63.24.35 - - [23/Sep/2026:00:10:40 +0000] "GET /public-inventory.txt HTTP/1.1" 200 1256 "-" "curl/8.21.0"
+181.63.24.35 - - [23/Sep/2026:00:11:08 +0000] "GET / HTTP/1.1" 200 1256 "-" "curl/8.21.0"
+181.63.24.35 - - [23/Sep/2026:00:11:08 +0000] "GET /public-inventory.txt HTTP/1.1" 200 1256 "-" "curl/8.21.0"
+181.63.24.35 - - [23/Sep/2026:00:11:08 +0000] "GET /noexiste-xyz HTTP/1.1" 200 1256 "-" "curl/8.21.0"
+181.63.24.35 - - [23/Sep/2026:00:11:08 +0000] "GET /.git/config HTTP/1.1" 404 146 "-" "curl/8.21.0"
+
+# Notas Blue Team
+# - 181.63.24.35 = IP pública del equipo Red Team (estación local). Correlaciona 1:1 con el PCAP lab3-http.pcap.
+# - 13.89.125.87 (zgrab/0.x) = escáner externo no autorizado: evidencia de exposición a Internet (UFW inactivo en ese momento)
+# - 127.0.0.1 = prueba local de logging
+# - error.log vacío durante la ventana del ejerciccio

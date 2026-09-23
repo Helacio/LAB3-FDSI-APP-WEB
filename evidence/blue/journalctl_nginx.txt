@@ -1,0 +1,8 @@
+# journalctl -u nginx --since '2 hours ago' (2026-09-23 00:11 UTC)
+
+Sep 22 22:34:08 FDSIServidorWeb systemd[1]: Starting nginx.service - A high performance web server and a reverse proxy server...
+Sep 22 22:34:08 FDSIServidorWeb systemd[1]: Started nginx.service - A high performance web server and a reverse proxy server.
+
+# Nota: journalctl no registra peticiones HTTP (eso vive en access.log).
+# Su valor Blue Team: confirmar inicio/recargas del servicio y correlacionar
+# cambios de configuración (reloads) con la línea de tiempo Purple Team.

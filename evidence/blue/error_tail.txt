@@ -1,0 +1,6 @@
+# error.log — tail (2026-09-23 00:11 UTC)
+
+(archivo vacío durante la ventana del ejercicio — sin errores de Nginx)
+
+# Nota: los errores relevantes se observaron en journalctl/nginx y access.log,
+# no en error.log. La ausencia de errores es evidencia de servicio estable.

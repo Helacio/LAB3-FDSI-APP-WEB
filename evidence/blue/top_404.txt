@@ -1,0 +1,23 @@
+# Paso 13 — Detección reproducible (evaluación real 2026-09-23 00:11 UTC)
+
+## Top 404 agrupado por IP+minuto (awk sobre access.log)
+      1 181.63.24.35 [23/Sep/2026:00:11:08 /.git/config 404 "curl/8.21.0"
+
+## Total de 404 en todo el access.log: 1
+
+## Resultado de la regla (>= 5 x 404 en 5 min por IP): SIN SEÑAL
+
+## Limitación observada (importante para el reporte):
+El sitio es una SPA (Angular) detrás de proxy: el backend responde 200 con el
+index.html para CUALQUIER ruta inexistente (verificado con GET /noexiste-xyz -> 200).
+Por tanto la regla basada en 404 tiene FALSOS NEGATIVOS estructurales en esta app:
+un atacante que enumerara directorios con curl recibiría 200s, no 404s.
+
+Única fuente real de 404: rutas bloqueadas por `location ~ /\. { deny all; }`
+(ej. /.git/config). La regla solo capturaría escaneos de rutas ocultas con punto,
+no enumeración general.
+
+## Falsos positivos documentados (heredados de detect-404.sh):
+- Typos legítimos de usuarios.
+- Escáneres autorizados del laboratorio (Nmap/ZAP).
+- Bots de Internet (ej. zgrab/0.x visto en access.log).

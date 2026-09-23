@@ -1,0 +1,16 @@
+# User-Agents de herramientas en access.log (grep -E 'nmap|curl|ZAP|zgrab')
+
+13.89.125.87 - - [23/Sep/2026:00:06:49 +0000] "GET / HTTP/1.1" 200 798 "-" "Mozilla/5.0 zgrab/0.x"
+127.0.0.1 - - [23/Sep/2026:00:07:05 +0000] "GET / HTTP/1.1" 200 1256 "-" "curl/8.5.0"
+181.63.24.35 - - [23/Sep/2026:00:10:39 +0000] "GET / HTTP/1.1" 200 1256 "-" "curl/8.21.0"
+181.63.24.35 - - [23/Sep/2026:00:10:40 +0000] "GET /public-inventory.txt HTTP/1.1" 200 1256 "-" "curl/8.21.0"
+181.63.24.35 - - [23/Sep/2026:00:11:08 +0000] "GET / HTTP/1.1" 200 1256 "-" "curl/8.21.0"
+181.63.24.35 - - [23/Sep/2026:00:11:08 +0000] "GET /public-inventory.txt HTTP/1.1" 200 1256 "-" "curl/8.21.0"
+181.63.24.35 - - [23/Sep/2026:00:11:08 +0000] "GET /noexiste-xyz HTTP/1.1" 200 1256 "-" "curl/8.21.0"
+181.63.24.35 - - [23/Sep/2026:00:11:08 +0000] "GET /.git/config HTTP/1.1" 404 146 "-" "curl/8.21.0"
+
+# Lectura defensiva:
+# - User-Agent "curl/8.21.0" sin Referer + rutas de enumeración = firma del Red Team autorizado.
+# - User-Agent "Mozilla/5.0 zgrab/0.x" = escáner de Internet (ZMap/zgrab), fuera del alcance del lab.
+# - Para distinguir curl legítimo de sospechoso haría falta: contexto (IP conocida),
+#   frecuencia, rutas solicitadas y correlación con la ventana autorizada (Pregunta 4 del lab).

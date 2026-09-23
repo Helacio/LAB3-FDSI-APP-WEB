@@ -1,0 +1,40 @@
+# UFW — Paso 5 aplicado (2026-09-23 00:51 UTC)
+
+## Estado antes
+Status: inactive
+(verificado previamente: solo el NSG de Azure protegía el host)
+
+## Reglas aplicadas
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow OpenSSH
+sudo ufw allow 80/tcp
+sudo ufw enable
+
+## Estado después
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+[ 1] OpenSSH                    ALLOW IN    Anywhere
+[ 2] 80/tcp                     ALLOW IN    Anywhere
+[ 3] OpenSSH (v6)               ALLOW IN    Anywhere (v6)
+[ 4] 80/tcp (v6)                ALLOW IN    Anywhere (v6)
+
+## Retest (desde fuera, 00:52 UTC)
+- SSH nuevo (llave .pem)               -> OK (conexión establecida)
+- GET / (puerto 80)                    -> 200 OK
+- GET /.git/config (puerto 80)         -> 404 (hardening sigue activo)
+- Puerto 8080 (muvbackend)             -> sin respuesta (cerrado)
+- Puerto 5672 (RabbitMQ/AMQP)          -> sin respuesta (cerrado)
+- Puertos 4369/25672 (Erlang)          -> sin respuesta (cerrado)
+
+## Notas
+- El puerto 80 quedó abierto a cualquier IP por decisión del equipo:
+  Red Team y docente llegan desde redes dinámicas distintas. Riesgo aceptado,
+  documentado en risk-register.md (R9).
+- Antes del cambio, el host exponía en 0.0.0.0: 5672, 25672, 4369 (RabbitMQ/Erlang)
+  y 8080 (muvbackend). El NSG ya bloqueaba 8080 desde Internet, pero UFW aporta
+  defensa en profundidad cerrando esos servicios en el propio host.
+- Recuperación ante error: las conexiones SSH establecidas no se cortan y la
+  regla OpenSSH se agregó ANTES de enable; en el peor caso se usa Azure Serial Console.
