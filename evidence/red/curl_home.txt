@@ -1,0 +1,23 @@
+HTTP/1.1 200 OK
+Server: nginx/1.24.0 (Ubuntu)
+Date: Wed, 16 Sep 2026 22:52:10 GMT
+Content-Type: text/html; charset=utf-8
+Content-Length: 6420
+Connection: keep-alive
+ETag: "66e8ad14-1914"
+Accept-Ranges: bytes
+
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MuvAutomation · Portal de Ejecución Remota Segura</title>
+  <meta name="description" content="Portal de demostración para ejecución remota segura de comandos en routers y switches. Entorno de laboratorio, datos ficticios.">
+</head>
+<body>
+  <h1>MuvAutomation · Portal de Ejecución Remota Segura</h1>
+  <p>Entorno: LAB | Propietario: Blue Team</p>
+  <a href="/public-inventory.txt">Inventario público de demostración</a>
+</body>
+</html>
