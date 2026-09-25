@@ -3,7 +3,19 @@
 Aplicación web del **Laboratorio 3** (Secure Product Challenge · FDSI).
 Tema: **Portal de Ejecución Remota Segura** para routers y switches.
 
-Stack: **Angular** (frontend) + **Go** (API) + **MongoDB** (NoSQL) + **RabbitMQ** (colas y SSE) sobre **nginx** en HTTP.
+Stack: **Angular** (frontend) + **Go** (API) + **MongoDB** (NoSQL) + **RabbitMQ** (colas y SSE) sobre **nginx**.
+
+## Laboratorio 3.2 — seguridad incorporada
+
+- **HTTPS forzado** con CA interna (`MuvAutomation_Lab_CA`), redirect 80→443, HSTS y
+  CRL publicada en `/crl/muv-ca.crl`.
+- **Autenticación con MFA**: login + código TOTP (app autenticadora) + JWT de 15 min.
+- **Roles**: `lector` (solo consultas) y `cambiador` (registra órdenes y lanza revisiones).
+- **Bitácora sellada**: hash chain + HMAC-SHA256; `GET /api/sessions/verify` detecta
+  modificaciones.
+- **Usuarios demo (ficticios)**: `lector1/LectorLab123!` y `cambiador1/CambiadorLab123!`
+  (MFA se activa en el primer login, con el secreto/URL que muestra el portal).
+- Evidencias Blue Team en `evidence/blue/` (TLS, auth, bitácora, parches de nginx).
 
 ## Funcionamiento
 
@@ -17,7 +29,8 @@ y roles llegan en el Laboratorio 4.
 ## Arquitectura
 
 ```
-Navegador ──HTTP:80──> nginx ──/ ────────────────> /var/www/muvautomation (Angular)
+Navegador ──HTTPS:443──> nginx ──/ ────────────────> /var/www/muvautomation (Angular)
+              (HTTP:80 redirige a HTTPS)
                             ├──/api/ ────────────> 127.0.0.1:8080 (Go) ──> MongoDB 127.0.0.1:27017
                             └──/api/status/stream (SSE) ── Go <── RabbitMQ 127.0.0.1:5672
 ```
@@ -166,36 +179,44 @@ router.status.jobs  ──►  workers Go (STATUS_WORKERS)
 
 ## API
 
+Rutas públicas (sin token): `/api/healthz`, `/api/inventory.txt` y `/api/auth/*`.
+El resto requiere `Authorization: Bearer <token>`; los POST de escritura requieren
+rol `cambiador`. El stream SSE acepta el token por query `?token=` (EventSource no
+permite headers).
+
 | Método | Ruta | Descripción |
 |---|---|---|
-| GET | `/api/healthz` | Estado del servicio y de MongoDB. |
+| POST | `/api/auth/login` | Login con usuario/password. Devuelve `{estado: enroll\|mfa, ticket}` (+ secreto/URL otpauth si es primer ingreso). |
+| POST | `/api/auth/verify` | Verifica código TOTP contra el ticket y devuelve el JWT de acceso. |
+| GET | `/api/auth/me` | Identidad y rol del token. |
+| GET | `/api/healthz` | Estado del servicio y de MongoDB (público). |
 | GET | `/api/status` | Entorno, propietario y aviso (colección `settings`). |
 | GET | `/api/kpis` | Indicadores calculados desde MongoDB. |
 | GET | `/api/inventory` | Dispositivos (colección `devices`). |
-| GET | `/api/inventory.txt` | Mismo inventario en texto plano. |
+| GET | `/api/inventory.txt` | Mismo inventario en texto plano (público). |
 | GET | `/api/commands` | Catálogo de comandos permitidos (colección `commands`). |
 | GET | `/api/sessions?limit=N` | Últimas órdenes de la bitácora (colección `sessions`). |
-| POST | `/api/sessions` | Registra una orden: `{ "dispositivo", "comando", "operador" }`. |
-| POST | `/api/status/checks` | Inicia una revisión: encola un job por dispositivo. Devuelve `{ runId, total }`. |
-| GET | `/api/status/stream?runId=` | Stream SSE con el progreso del run (`run.started`, `check.result`, `run.finished`). |
+| GET | `/api/sessions/verify` | Verifica la cadena de integridad (hash + HMAC) de la bitácora. |
+| POST | `/api/sessions` | Registra una orden (rol `cambiador`): `{ "dispositivo", "comando" }`. El operador sale del token. |
+| POST | `/api/status/checks` | Inicia una revisión (rol `cambiador`): encola un job por dispositivo. Devuelve `{ runId, total }`. |
+| GET | `/api/status/stream?runId=&token=` | Stream SSE con el progreso del run (`run.started`, `check.result`, `run.finished`). |
 | GET | `/api/status/runs?limit=N` | Historial de revisiones. |
 | GET | `/api/status/runs/{runId}` | Estado del run y sus checks (fallback sin SSE). |
 | GET | `/api/status/latest` | Último estado conocido por dispositivo. |
 
-Ejemplo:
+Ejemplo con MFA (jq para extraer campos):
 
 ```bash
-curl -s http://127.0.0.1:8080/api/kpis
-curl -s -X POST http://127.0.0.1:8080/api/sessions \
+RESP=$(curl -sk -X POST https://127.0.0.1:8080/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"dispositivo":"RTR-LAB-01","comando":"show version","operador":"blue-tec"}'
-```
-
-Revisión de estados y stream SSE:
-
-```bash
-RUN=$(curl -s -X POST http://127.0.0.1:8080/api/status/checks | python3 -c 'import json,sys;print(json.load(sys.stdin)["runId"])')
-curl -N "http://127.0.0.1:8080/api/status/stream?runId=$RUN"
+  -d '{"usuario":"cambiador1","password":"CambiadorLab123!"}')
+TICKET=$(echo "$RESP" | python3 -c 'import json,sys;print(json.load(sys.stdin)["ticket"])')
+# codigo de 6 digitos desde la app autenticadora
+TOKEN=$(curl -sk -X POST https://127.0.0.1:8080/api/auth/verify \
+  -H 'Content-Type: application/json' \
+  -d "{\"ticket\":\"$TICKET\",\"codigo\":\"123456\"}" \
+  | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
+curl -sk -H "Authorization: Bearer $TOKEN" https://127.0.0.1:8080/api/inventory
 ```
 
 ## Despliegue
@@ -239,7 +260,8 @@ sudo ./install.sh /ruta/al/staging
 ## Dónde está publicado
 
 ```
-http://68.211.136.226
+https://68.211.136.226            (HTTP redirige a HTTPS)
+https://68.211.136.226/crl/muv-ca.crl   (lista de revocación de la CA interna)
 ```
 
 ## Créditos

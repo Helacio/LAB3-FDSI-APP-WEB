@@ -100,6 +100,21 @@ systemctl reload nginx 2>/dev/null || systemctl restart nginx
 # --- Servicio systemd del backend ---
 log "instalando servicio systemd"
 install -m 0644 "$STAGE/muvautomation.service" /etc/systemd/system/muvautomation.service
+
+# --- Secretos de la aplicacion (JWT, bitacora). No se versionan. ---
+log "verificando secretos de la aplicacion"
+SECRETS_FILE=/etc/muvautomation/secrets.env
+if [ ! -f "$SECRETS_FILE" ]; then
+  mkdir -p /etc/muvautomation
+  umask 077
+  {
+    echo "JWT_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+    echo "BITACORA_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+  } > "$SECRETS_FILE"
+  chmod 600 "$SECRETS_FILE"
+  log "secretos generados en $SECRETS_FILE"
+fi
+
 systemctl daemon-reload
 systemctl enable muvautomation
 systemctl restart muvautomation

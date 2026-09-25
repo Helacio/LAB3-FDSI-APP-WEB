@@ -1,3 +1,4 @@
+@if (auth.esCambiador()) {
 <form class="session-form" (submit)="submit($event)">
   <div class="field">
     <label for="session-device">Dispositivo</label>
@@ -27,17 +28,6 @@
     </select>
   </div>
 
-  <div class="field">
-    <label for="session-operator">Operador</label>
-    <input
-      id="session-operator"
-      type="text"
-      placeholder="Anónimo"
-      [value]="operador()"
-      (input)="operador.set($any($event.target).value)"
-    />
-  </div>
-
   <div class="field actions">
     <button type="submit" [disabled]="sending()">
       {{ sending() ? 'Registrando…' : 'Ejecutar orden' }}
@@ -51,6 +41,18 @@
     <p class="form-error">{{ error() }}</p>
   }
 </form>
+} @else {
+  <p class="notice">Tu rol (lector) permite consultar la bitácora, no registrar órdenes.</p>
+}
+
+<div class="verify-bar">
+  <button type="button" class="verify-btn" (click)="verificar()" [disabled]="verifying()">
+    {{ verifying() ? 'Verificando…' : 'Verificar integridad de la bitácora' }}
+  </button>
+  @if (verResult()) {
+    <p class="verify-result" [class.bad]="verResult().includes('ALERTA')">{{ verResult() }}</p>
+  }
+</div>
 
 <div class="scroll">
   <table>

@@ -31,7 +31,34 @@ export interface Session {
 export interface NewSession {
   dispositivo: string;
   comando: string;
-  operador: string;
+  operador?: string;
+}
+
+export interface LoginResponse {
+  estado: 'enroll' | 'mfa';
+  usuario?: string;
+  secreto?: string;
+  url?: string;
+  ticket: string;
+}
+
+export interface AuthTokenResponse {
+  token: string;
+  usuario: string;
+  rol: string;
+  expiraEn: string;
+}
+
+export interface Me {
+  usuario: string;
+  rol: string;
+}
+
+export interface VerifyResult {
+  ok: boolean;
+  total: number;
+  legadas: number;
+  primerRompimiento: string;
 }
 
 export interface StatusRun {

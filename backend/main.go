@@ -45,12 +45,18 @@ type session struct {
 	Operador    string `json:"operador" bson:"operador"`
 	Timestamp   string `json:"timestamp" bson:"timestamp"`
 	Resultado   string `json:"resultado" bson:"resultado"`
+	Hash        string `json:"hash,omitempty" bson:"hash,omitempty"`
+	PrevHash    string `json:"prevHash,omitempty" bson:"prevHash,omitempty"`
+	HMAC        string `json:"hmac,omitempty" bson:"hmac,omitempty"`
 }
 
 type server struct {
-	db     *mongo.Database
-	broker Broker
-	status *statusManager
+	db          *mongo.Database
+	broker      Broker
+	status      *statusManager
+	jwtSecret   []byte
+	bitacoraKey []byte
+	limiter     *loginLimiter
 }
 
 func envOr(key, fallback string) string {
@@ -275,7 +281,6 @@ func (s *server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Dispositivo string `json:"dispositivo"`
 		Comando     string `json:"comando"`
-		Operador    string `json:"operador"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "JSON invalido"})
@@ -283,7 +288,6 @@ func (s *server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Dispositivo = strings.TrimSpace(in.Dispositivo)
 	in.Comando = strings.TrimSpace(in.Comando)
-	in.Operador = strings.TrimSpace(in.Operador)
 	if in.Dispositivo == "" || in.Comando == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dispositivo y comando son obligatorios"})
 		return
@@ -292,10 +296,23 @@ func (s *server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	doc := session{
 		Dispositivo: in.Dispositivo,
 		Comando:     in.Comando,
-		Operador:    orDefault(in.Operador, "Anonimo"),
+		Operador:    usuarioDe(r.Context()),
 		Timestamp:   time.Now().UTC().Format(time.RFC3339),
 		Resultado:   "OK",
 	}
+
+	prev, err := s.ultimaSesion(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "no se pudo encadenar la bitacora"})
+		return
+	}
+	prevHash := ""
+	if prev != nil {
+		prevHash = prev.Hash
+	}
+	doc.PrevHash = prevHash
+	doc.Hash, doc.HMAC = s.sellar(prevHash, doc)
+
 	if _, err := s.db.Collection("sessions").InsertOne(ctx, doc); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "no se pudo registrar la sesion"})
 		return
@@ -392,6 +409,9 @@ func main() {
 	if err := seedData(ctx, db); err != nil {
 		log.Fatalf("no se pudo sembrar la base de datos: %v", err)
 	}
+	if err := seedUsers(ctx, db); err != nil {
+		log.Fatalf("no se pudieron sembrar los usuarios: %v", err)
+	}
 
 	brokerURL := envOr("BROKER_URL", defaultBroker)
 	broker, err := newRabbitBroker(brokerURL)
@@ -411,25 +431,38 @@ func main() {
 	}
 	statusMgr := newStatusManager(db, broker, workers)
 
-	s := &server{db: db, broker: broker, status: statusMgr}
+	jwtSecret := envOr("JWT_SECRET", "dev-secret-cambiar-en-produccion")
+	bitacoraKey := []byte(envOr("BITACORA_KEY", "dev-bitacora-key-cambiar"))
+	s := &server{
+		db:          db,
+		broker:      broker,
+		status:      statusMgr,
+		jwtSecret:   []byte(jwtSecret),
+		bitacoraKey: bitacoraKey,
+		limiter:     newLoginLimiter(),
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/status", s.handleStatus)
-	mux.HandleFunc("GET /api/kpis", s.handleKpis)
-	mux.HandleFunc("GET /api/inventory", s.handleInventory)
+	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	mux.HandleFunc("POST /api/auth/verify", s.handleVerify)
+	mux.HandleFunc("GET /api/auth/me", s.requireAuth(s.handleMe))
+	mux.HandleFunc("GET /api/status", s.requireAuth(s.handleStatus))
+	mux.HandleFunc("GET /api/kpis", s.requireAuth(s.handleKpis))
+	mux.HandleFunc("GET /api/inventory", s.requireAuth(s.handleInventory))
 	mux.HandleFunc("GET /api/inventory.txt", s.handleInventoryTxt)
-	mux.HandleFunc("GET /api/commands", s.handleCommands)
-	mux.HandleFunc("GET /api/sessions", s.handleSessions)
-	mux.HandleFunc("POST /api/sessions", s.handleCreateSession)
+	mux.HandleFunc("GET /api/commands", s.requireAuth(s.handleCommands))
+	mux.HandleFunc("GET /api/sessions", s.requireAuth(s.handleSessions))
+	mux.HandleFunc("GET /api/sessions/verify", s.requireAuth(s.handleVerifyBitacora))
+	mux.HandleFunc("POST /api/sessions", s.requireRole(rolCambiador, s.handleCreateSession))
 	mux.HandleFunc("GET /api/healthz", s.handleHealth)
-	mux.HandleFunc("POST /api/status/checks", s.handleStartStatusCheck)
-	mux.HandleFunc("GET /api/status/stream", s.handleStatusStream)
-	mux.HandleFunc("GET /api/status/runs", s.handleStatusRuns)
-	mux.HandleFunc("GET /api/status/runs/{runId}", s.handleStatusRun)
-	mux.HandleFunc("GET /api/status/latest", s.handleStatusLatest)
+	mux.HandleFunc("POST /api/status/checks", s.requireRole(rolCambiador, s.handleStartStatusCheck))
+	mux.HandleFunc("GET /api/status/stream", s.requireAuth(s.handleStatusStream))
+	mux.HandleFunc("GET /api/status/runs", s.requireAuth(s.handleStatusRuns))
+	mux.HandleFunc("GET /api/status/runs/{runId}", s.requireAuth(s.handleStatusRun))
+	mux.HandleFunc("GET /api/status/latest", s.requireAuth(s.handleStatusLatest))
 
 	httpServer := &http.Server{
 		Addr:         port,
-		Handler:      cors(mux),
+		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -462,18 +495,4 @@ func main() {
 	_ = httpServer.Shutdown(shutdownCtx)
 	_ = client.Disconnect(shutdownCtx)
 	log.Println("servidor detenido")
-}
-
-func cors(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Vary", "Origin")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }

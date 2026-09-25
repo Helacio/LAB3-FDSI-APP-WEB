@@ -10,6 +10,7 @@ Type=simple
 User=muvautomation
 Group=muvautomation
 WorkingDirectory=/opt/muvautomation
+EnvironmentFile=/etc/muvautomation/secrets.env
 Environment=PORT=8080
 Environment=MONGO_URI=mongodb://127.0.0.1:27017
 Environment=MONGO_DB=muvautomation

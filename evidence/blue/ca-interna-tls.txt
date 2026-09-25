@@ -1,0 +1,49 @@
+# Fase 1 Lab 3.2 — CA interna + HTTPS forzado (2026-09-25 04:22 UTC)
+
+## PKI creada
+
+- CA raíz: `CN=MuvAutomation_Lab_CA, O=FDSI, C=CO` (RSA 4096, 5 años, hasta 2031).
+  Archivos: `/etc/ssl/ca-muv/ca.crt` (pública), `/etc/ssl/ca-muv/private/ca.key` (600 root).
+  Fingerprint SHA-256: `59:9F:0A:76:5D:BD:32:EE:80:CC:65:C8:5B:84:86:8E:CE:D9:1C:82:2E:B4:DF:B8:AE:54:9E:89:2A:E5:E3:F3`
+- Certificado de servidor: `CN=68.211.136.226`, SAN `IP:68.211.136.226`,
+  firmado por la CA, 90 días (hasta 2026-12-24), RSA 2048.
+  `/etc/ssl/certs/muvautomation.crt` + chain `/etc/ssl/certs/muvautomation-chain.crt`.
+- CRL: generada con `openssl ca -gencrl` (`/opt/muvautomation/crl/muv-ca.crl`) y
+  publicada en `http://68.211.136.226/crl/muv-ca.crl` (Content-Type application/pkix-crl).
+  El certificado lleva `crlDistributionPoints` apuntando a esa URL.
+- Config de la CA: `ca.cnf` (base de datos `index.txt`, `crlnumber`, 30 días de CRL).
+
+## Nginx (repo: nginx/muvautomation.conf)
+
+- Puerto 80: `location / { return 301 https://$host$request_uri; }` + excepción
+  `location = /crl/muv-ca.crl` (la CRL viaja firmada por HTTP).
+- Puerto 443: `ssl_certificate` = chain (leaf + CA), TLSv1.2/TLSv1.3,
+  ciphers ECDHE-AES-GCM/CHACHA20 (sin CBC), `ssl_session_tickets off`,
+  `ssl_stapling off` (CA interna sin OCSP responder; evita superficie de CVE-2026-40701),
+  HSTS `max-age=86400` (subir a 31536000 tras validación).
+
+## Confianza en clientes
+
+- Windows (usuario): CA instalada con `certutil -user -addstore Root`.
+  Se eliminó el certificado autofirmado anterior del almacén.
+- Kali: pendiente — copiar `ca.crt` y `sudo cp ca.crt /usr/local/share/ca-certificates/muv-ca.crt && sudo update-ca-certificates`.
+
+## Retest (desde Internet)
+
+| Prueba | Antes | Después |
+|---|---|---|
+| `https://68.211.136.226/` con validación completa (schannel + CRL) | 000 (revocación sin verificar) | 200 OK |
+| `http://68.211.136.226/` | 200 directo | 301 → https |
+| CRL `http://.../crl/muv-ca.crl` | — | 200, application/pkix-crl |
+| Header HSTS | ausente | `Strict-Transport-Security: max-age=86400` |
+| `/api/healthz` por HTTPS | — | `{"mongodb":"up","status":"ok"}` |
+| Cadena del cert | autofirmado | issuer = MuvAutomation_Lab_CA |
+
+## Notas
+
+- El fallo intermedio (CRYPT_E_NO_REVOCATION_CHECK) demostró por qué un cert de CA
+  interna sin CRL publicada rompe la validación en Windows/schannel. Con CRL DP +
+  CRL servida, la validación completa funciona.
+- Renovación del cert de servidor (cada 90 días): re-firmar el CSR con
+  `openssl ca -config ca.cnf -batch ...`, regenerar chain y reload. La CA dura 5 años.
+- El redirect 80→443 no afecta el healthcheck interno del deploy (solo muestra 301).

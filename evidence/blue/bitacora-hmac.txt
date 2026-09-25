@@ -1,0 +1,42 @@
+# Fase 3 Lab 3.2 — Integridad de la bitácora: hash chain + HMAC (2026-09-25 04:57 UTC)
+
+## Diseño
+
+- Cada entrada de la colección `sessions` se sella con:
+  - `hash = SHA-256(prevHash || payload)` donde el payload canónico es
+    `dispositivo|comando|operador|timestamp|resultado`.
+  - `hmac = HMAC-SHA256(BITACORA_KEY, hash)` (clave de 256 bits en
+    `/etc/muvautomation/secrets.env`, fuera del repo).
+- `prevHash` encadena cada entrada con la anterior: modificar cualquier campo
+  invalida esa entrada y todas las siguientes.
+- El `operador` viene del token JWT (Fase 2): identidad ligada a la bitácora
+  (anti-repudio de quién ordenó).
+- `GET /api/sessions/verify` recalcula la cadena completa y reporta
+  `{ok, total, legadas, primerRompimiento}`. Requiere autenticación.
+- Botón "Verificar integridad de la bitácora" en el panel de sesiones (SPA).
+
+## Matriz de pruebas E2E
+
+| # | Prueba | Esperado | Resultado |
+|---|---|---|---|
+| 1 | POST 3 sesiones con token cambiador | 201 + hash/prevHash/hmac en la respuesta | 201 ✓ |
+| 2 | GET /sessions/verify antes de alterar | ok=true, total=3, legadas=0 | ok=True total=3 ✓ |
+| 3 | GET /sessions/verify sin token | 401 | 401 ✓ |
+| 4 | Alterar `resultado` de la 1ra entrada directo en Mongo | — | entrada alterada ✓ |
+| 5 | GET /sessions/verify después de alterar | ok=false + primerRompimiento = entrada alterada | ok=False, primerRompimiento=2026-09-25T04:56:21Z ✓ |
+
+La detección señala exactamente la entrada manipulada: la cadena de hashes no
+se puede reescribir sin la clave HMAC.
+
+## Notas y limitaciones
+
+- Se eliminaron 524 sesiones legadas (previas a la Fase 3, sin sello): la
+  cadena arranca limpia. `verify` las contaría como `legadas` si existieran.
+- La clave HMAC vive en el propio servidor (env del servicio). Si un atacante
+  con acceso al host + clave reescribe la cadena completa, no se detecta.
+  Alternativa a futuro: clave en Azure Key Vault o firma asimétrica con clave
+  privada offline.
+- El hash no usa nonce/salt por entrada: entradas idénticas producen el mismo
+  hash intermedio (aceptable para el lab; documentar).
+- Prueba de negocio pendiente: verificación periódica automática (ej. job cada
+  hora) y alerta — fuera del alcance de este lab.

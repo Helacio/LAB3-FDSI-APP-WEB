@@ -1,0 +1,9 @@
+# Retest — nmap -sV puerto 443 (2026-09-25 05:01 UTC)
+
+$ nmap -Pn -sV -p 443 127.0.0.1
+
+PORT    STATE SERVICE  VERSION
+443/tcp open  ssl/http nginx
+
+# Nota: el banner no revela versión (server_tokens off) -> R2 verificado.
+# El servicio se identifica como nginx, sin versión ni módulos.

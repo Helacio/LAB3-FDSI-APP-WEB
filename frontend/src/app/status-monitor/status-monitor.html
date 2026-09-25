@@ -1,7 +1,11 @@
 <div class="status-toolbar">
-  <button type="button" (click)="start()" [disabled]="phase() === 'running'">
-    {{ phase() === 'running' ? 'Revisando…' : 'Revisar estados' }}
-  </button>
+  @if (auth.esCambiador()) {
+    <button type="button" (click)="start()" [disabled]="phase() === 'running'">
+      {{ phase() === 'running' ? 'Revisando…' : 'Revisar estados' }}
+    </button>
+  } @else {
+    <span class="muted">Tu rol (lector) permite ver el estado, no lanzar revisiones.</span>
+  }
 
   @if (live()) {
     <span class="live"><span class="live-dot"></span> en vivo</span>

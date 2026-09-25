@@ -1,4 +1,5 @@
 <app-theme-toggle />
+@if (auth.autenticado()) {
 <div class="wrap">
 
   <header class="site">
@@ -7,14 +8,18 @@
       <h1>MuvAutomation · Portal de Ejecución Remota Segura</h1>
       <p>Consola de demostración para operar routers y switches sin acceso directo al dispositivo</p>
     </div>
+    <div class="user-box">
+      <span class="user-name">{{ auth.usuario() }}</span>
+      <span class="user-rol">{{ auth.rol() }}</span>
+      <button type="button" class="logout" (click)="logout()">Salir</button>
+    </div>
   </header>
 
   <div class="banner">
     <strong>Entorno: {{ status()?.entorno ?? 'LAB' }}.</strong>
     {{ status()?.aviso ?? 'Todos los datos son ficticios.' }}
-    Este portal se publica por HTTP y sin autenticación como línea base del Laboratorio 3
-    (Red Team + Blue Team). La confidencialidad, la identidad y los roles se incorporan en el
-    Laboratorio 4.
+    Acceso por HTTPS con certificado de CA interna, autenticación con MFA TOTP y roles
+    (lector / cambiador) — Laboratorio 3.2. Toda orden queda ligada a la identidad autenticada.
   </div>
 
   @if (state() === 'loading') {
@@ -57,7 +62,7 @@
       <li><strong>Sesión por dispositivo:</strong> cada ejecución abre y cierra su propia sesión, sin sesiones persistentes.</li>
       <li><strong>Bitácora completa:</strong> origen, destino, comando, timestamp UTC y responsable se guardan por cada orden.</li>
       <li><strong>Sin credenciales en el cliente:</strong> el navegador nunca recibe usuarios ni llaves de los equipos.</li>
-      <li><strong>Pendiente para Lab 4:</strong> HTTPS, autenticación con MFA, roles (lectura / cambio) y firma de la bitácora.</li>
+      <li><strong>Lab 3.2:</strong> HTTPS con CA interna, MFA TOTP, roles (lectura / cambio) y firma de la bitácora.</li>
     </ul>
   </section>
 
@@ -115,3 +120,6 @@
   </footer>
 
 </div>
+} @else {
+  <app-login (logged)="onLogged()" />
+}

@@ -1,0 +1,32 @@
+# Fase 4 Lab 3.2 — Parches de nginx confirmados (R11) (2026-09-25 05:00 UTC)
+
+## Estado del paquete
+
+- Instalado: `nginx 1.24.0-2ubuntu7.18` (amd64)
+- Candidato en repositorios de Ubuntu (noble-updates/noble-security): el mismo
+  → no hay versión más nueva pendiente de instalar.
+
+## Verificación por CVE (fuente: `apt-get changelog nginx`, 4802 líneas)
+
+| CVE | Módulo/efecto | Estado según changelog |
+|---|---|---|
+| CVE-2026-42533 | DoS/ejecución vía `map` | SECURITY UPDATE + patch ✓ |
+| CVE-2025-23419 | Reutilización de sesión TLS 1.3 cross-SNI | SECURITY UPDATE + patch ✓ |
+| CVE-2026-9256 | Buffer overflow en rewrite | SECURITY UPDATE + patch ✓ |
+| CVE-2026-42945 | Buffer overflow en rewrite | patch aplicado ✓ |
+| CVE-2026-42055 | Heap overflow en HTTP/2 y gRPC (headers largos) | SECURITY UPDATE + patch ✓ |
+| CVE-2026-40701 | Use-after-free en resolver+OCSP | SECURITY UPDATE + patch ✓ |
+| CVE-2024-7347 | DoS en mp4_module | SECURITY UPDATE + patch ✓ |
+| CVE-2026-48142 | Heap overread en charset | SECURITY UPDATE + patch ✓ |
+| CVE-2026-42934 | Buffer overread en charset | SECURITY UPDATE + patch ✓ |
+| CVE-2023-44487 | HTTP/2 Rapid Reset | mitigaciones adicionales aplicadas ✓ |
+
+## Conclusión
+
+- R11 cerrado: el paquete de Ubuntu (backports noble-security) incluye parches
+  para todas las CVEs listadas en el risk register. No se requiere actualización.
+- Implicación para la Fase 1: la superficie TLS habilitada (sesiones TLS 1.3 y
+  OCSP) está cubierta por CVE-2025-23419 y CVE-2026-40701 parcheadas.
+- Recomendación operativa: mantener `unattended-upgrades` activo (o revisar
+  `apt update && apt list --upgradable` periódicamente) para recibir los
+  backports de seguridad futuros.

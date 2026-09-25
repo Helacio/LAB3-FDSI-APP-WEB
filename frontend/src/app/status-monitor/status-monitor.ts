@@ -1,5 +1,6 @@
 import { Component, inject, input, OnDestroy, OnInit, signal } from '@angular/core';
 import { ApiService } from '../api.service';
+import { AuthService } from '../auth.service';
 import { Device, StatusCheck, StreamPayload } from '../models';
 
 type Phase = 'idle' | 'running' | 'done' | 'error';
@@ -10,6 +11,7 @@ type Phase = 'idle' | 'running' | 'done' | 'error';
 })
 export class StatusMonitor implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
+  protected readonly auth = inject(AuthService);
 
   readonly devices = input<Device[]>([]);
 
@@ -40,7 +42,7 @@ export class StatusMonitor implements OnInit, OnDestroy {
     this.pending.set(new Set(this.devices().map((d) => d.hostname)));
     this.phase.set('running');
 
-    this.api.startStatusRun('portal').subscribe({
+    this.api.startStatusRun().subscribe({
       next: ({ runId, total }) => {
         this.runId.set(runId);
         this.total.set(total);

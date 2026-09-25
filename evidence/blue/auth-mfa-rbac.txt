@@ -1,0 +1,73 @@
+# Fase 2 Lab 3.2 — Autenticación MFA (TOTP) + JWT + RBAC (2026-09-25 04:48 UTC)
+
+## Qué se implementó
+
+### Backend (Go)
+- `backend/auth.go`: usuarios en colección `users` de MongoDB
+  (`usuario`, `hash` bcrypt, `rol`, `totpSecret`, `pendiente`, `mfaActivo`).
+- Flujo:
+  1. `POST /api/auth/login` {usuario, password} → valida bcrypt.
+     - Sin MFA activo → 202 `{estado:"enroll", secreto, url otpauth, ticket}`.
+     - Con MFA → 202 `{estado:"mfa", ticket}`.
+  2. `POST /api/auth/verify` {ticket, codigo} → valida ticket JWT (2 min) +
+     TOTP (pquerna/otp, SHA1, 6 dígitos, 30 s) → activa MFA si es enroll →
+     emite JWT de acceso (15 min, claims: sub, rol, tipo).
+  3. `GET /api/auth/me` → identidad desde el token.
+- Middleware `requireAuth` (Bearer o `?token=` para SSE) y `requireRole`.
+- RBAC: GETs → cualquier usuario autenticado; `POST /api/sessions` y
+  `POST /api/status/checks` → solo rol `cambiador`.
+- `operador` de la bitácora y de los runs ahora sale del token (sub), no del body.
+- Rate limit de login: 10 intentos fallidos por IP en 5 min → 429 (en memoria).
+- CORS abierto eliminado. Seed de usuarios ficticios al primer arranque.
+
+### Frontend (Angular)
+- `auth.service.ts` (estado + token en localStorage), interceptores Bearer y
+  manejo de 401 (logout + reload), componente `login` (3 pasos: credenciales /
+  enrolamiento MFA con secreto+URL / código MFA), badge usuario+rol y logout en
+  el header, ocultación de acciones de escritura para lectores.
+
+## Usuarios demo (ficticios, para el laboratorio)
+
+| Usuario | Password | Rol | MFA |
+|---|---|---|---|
+| lector1 | LectorLab123! | lector | enrolado |
+| cambiador1 | CambiadorLab123! | cambiador | enrolado |
+
+## Matriz de pruebas E2E (vía https://68.211.136.226/api)
+
+| # | Prueba | Esperado | Resultado |
+|---|---|---|---|
+| 1 | GET /inventory sin token | 401 | 401 ✓ |
+| 2 | Login cambiador1 | 202 mfa | 202 ✓ |
+| 3 | Código TOTP generado contra secreto | — | ✓ |
+| 4 | Verify ticket+código | 200 + token rol=cambiador | 200 ✓ |
+| 5 | GET /inventory con token | 200 | 200 ✓ |
+| 6 | POST /sessions cambiador | 201, operador=cambiador1 (desde token) | 201 ✓ |
+| 7 | Enroll+verify lector1 | 200 rol=lector | 200 ✓ |
+| 8 | POST /sessions lector | 403 | 403 ✓ |
+| 9 | 11 logins con password mala | último 429 | 429 ✓ |
+
+Bug encontrado y corregido durante la prueba: `requireRole` leía el primer
+valor de `credenciales()` (usuario) en lugar del rol. El destructuring estaba
+invertido (`_, rolActual`). Detectado con log temporal y journalctl.
+
+## Despliegue
+
+- Go 1.27.1 instalado en el servidor (/usr/local/go); binario compilado con
+  CGO_ENABLED=0 y desplegado en /opt/muvautomation/muvbackend.
+- Secretos fuera del repo: /etc/muvautomation/secrets.env (600, JWT_SECRET +
+  BITACORA_KEY). El servicio systemd carga EnvironmentFile; `install.sh` genera
+  los secretos si no existen (idempotente en deploys).
+- Frontend compilado local (npm ci + ng build) y publicado en /var/www/muvautomation.
+
+## Limitaciones documentadas (riesgo residual)
+
+- JWT en localStorage del navegador: expuesto a XSS. Mitigación a futuro:
+  cookies httpOnly SameSite o tokens en memoria.
+- SSE usa `?token=` (EventSource no permite headers) → el token de acceso
+  aparece en access.log de nginx. Observación Blue Team: los logs quedan con
+  material sensible; mitigar con fetch-based SSE o ticket de stream de corta vida.
+- Semilla TOTP guardada en claro en MongoDB (entorno de laboratorio).
+- Rate limit por IP detrás del proxy (X-Forwarded-For): una IP compartida
+  (NAT) puede bloquear a otros usuarios legítimos.
+- Sin lockout persistente ni registro de intentos fallidos en DB (solo en memoria).

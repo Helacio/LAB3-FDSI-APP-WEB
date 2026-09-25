@@ -1,0 +1,103 @@
+<div class="login-card">
+  <h1>MuvAutomation</h1>
+  <p class="muted">Acceso con MFA (TOTP). Entorno de laboratorio, datos ficticios.</p>
+
+  @if (paso() === 'creds') {
+    <form (submit)="submitCreds()">
+      <div class="field">
+        <label for="login-user">Usuario</label>
+        <input id="login-user" type="text" [(ngModel)]="usuario" name="usuario" autocomplete="username" required />
+      </div>
+      <div class="field">
+        <label for="login-pass">Contraseña</label>
+        <input id="login-pass" type="password" [(ngModel)]="password" name="password" autocomplete="current-password" required />
+      </div>
+      <div class="field actions">
+        <button type="submit" [disabled]="busy()">
+          {{ busy() ? 'Verificando…' : 'Continuar' }}
+        </button>
+      </div>
+    </form>
+  }
+
+  @if (paso() === 'enroll') {
+    <form (submit)="submitCodigo()">
+      <p><strong>Primer ingreso:</strong> activa MFA en tu app autenticador.</p>
+      <p class="secret-label">Secreto (base32):</p>
+      <p class="secret">{{ secreto() }}</p>
+      <p class="secret-label">URL otpauth (para generar QR offline):</p>
+      <p class="secret-url">{{ url() }}</p>
+      <div class="field">
+        <label for="login-code">Código de 6 dígitos de tu app</label>
+        <input id="login-code" type="text" inputmode="numeric" maxlength="6" [(ngModel)]="codigo" name="codigo" required />
+      </div>
+      <div class="field actions">
+        <button type="submit" [disabled]="busy()">
+          {{ busy() ? 'Verificando…' : 'Activar y entrar' }}
+        </button>
+        <button type="button" class="link" (click)="volver()">Volver</button>
+      </div>
+    </form>
+  }
+
+  @if (paso() === 'mfa') {
+    <form (submit)="submitCodigo()">
+      <div class="field">
+        <label for="login-code">Código de 6 dígitos de tu app autenticador</label>
+        <input id="login-code" type="text" inputmode="numeric" maxlength="6" [(ngModel)]="codigo" name="codigo" required />
+      </div>
+      <div class="field actions">
+        <button type="submit" [disabled]="busy()">
+          {{ busy() ? 'Verificando…' : 'Entrar' }}
+        </button>
+        <button type="button" class="link" (click)="volver()">Volver</button>
+      </div>
+    </form>
+  }
+
+  @if (error()) {
+    <p class="form-error">{{ error() }}</p>
+  }
+</div>
+
+<style>
+  .login-card {
+    max-width: 420px;
+    margin: 8vh auto;
+    padding: 28px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  }
+  .login-card h1 {
+    margin: 0 0 4px;
+    color: var(--brand);
+  }
+  .secret {
+    font-family: ui-monospace, monospace;
+    word-break: break-all;
+    background: var(--bg);
+    border: 1px dashed var(--line);
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 13px;
+  }
+  .secret-url {
+    font-family: ui-monospace, monospace;
+    word-break: break-all;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .secret-label {
+    margin: 12px 0 4px;
+    font-weight: 600;
+  }
+  button.link {
+    background: none;
+    border: none;
+    color: var(--brand);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+</style>

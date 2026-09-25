@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"log"
 	mathrand "math/rand/v2"
@@ -269,12 +268,7 @@ func (s *server) handleStartStatusCheck(w http.ResponseWriter, r *http.Request) 
 	ctx, cancel := s.ctx(r.Context())
 	defer cancel()
 
-	var in struct {
-		Operador string `json:"operador"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&in)
-
-	runID, total, err := s.status.StartRun(ctx, in.Operador)
+	runID, total, err := s.status.StartRun(ctx, usuarioDe(r.Context()))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "no se pudo iniciar la revision: " + err.Error()})
 		return
