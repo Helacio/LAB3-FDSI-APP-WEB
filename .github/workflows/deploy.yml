@@ -67,6 +67,8 @@ jobs:
       - name: Preparar staging
         run: |
           cp nginx/muvautomation.conf staging/
+          mkdir -p staging/snippets
+          cp nginx/snippets/muvautomation.conf staging/snippets/
           cp deploy/muvautomation.service staging/
           cp deploy/install.sh staging/
           chmod +x staging/install.sh

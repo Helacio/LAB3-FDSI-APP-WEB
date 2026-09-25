@@ -84,6 +84,16 @@ log "instalando vhost de nginx"
 install -m 0644 "$STAGE/muvautomation.conf" /etc/nginx/sites-available/muvautomation
 ln -sf /etc/nginx/sites-available/muvautomation /etc/nginx/sites-enabled/muvautomation
 rm -f /etc/nginx/sites-enabled/default
+
+# --- snippet compartido (locations + hardening) ---
+log "instalando snippet de nginx"
+mkdir -p /etc/nginx/snippets
+if [ -f "$STAGE/snippets/muvautomation.conf" ]; then
+  install -m 0644 "$STAGE/snippets/muvautomation.conf" /etc/nginx/snippets/muvautomation.conf
+else
+  log "AVISO: no hay snippets/muvautomation.conf en staging; se conserva el existente"
+fi
+
 nginx -t
 systemctl reload nginx 2>/dev/null || systemctl restart nginx
 
