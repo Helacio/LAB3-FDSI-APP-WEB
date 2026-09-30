@@ -1,7 +1,7 @@
 # Puntos 0 y 1: preparación y baseline forense
 
 **Fecha:** 2026-09-30
-**Integrantes:** Tomas Quiceno y Hernan Sanches
+**Integrantes:** Tomas Quiceno y Hernan Sanchez
 **Binarios:** `crackme_level1`, `crackme_level2`, `crackme_level2_stripped`
 **Salida cruda:** [`baseline.txt`](./baseline.txt)
 
