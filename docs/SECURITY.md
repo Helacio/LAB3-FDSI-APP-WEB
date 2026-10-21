@@ -14,7 +14,7 @@
 | Semgrep | SAST | 21-10-2026 | 21 hallazgos (warning): 17 tags mutables de actions, 1 `math/rand`, 3 `$host` en nginx | Artefacto `resultado-semgrep` del run 39683754980 |
 | Gitleaks / GitHub secret scanning | Secretos | 21-10-2026 | 0 secretos detectados | Job Gitleaks (run 39683754980) y pestaña Security |
 | Dependabot | SCA | 21-10-2026 | 16 alertas: 1 critical, 8 high, 6 medium, 1 low | Pestaña Security → Dependabot |
-| OWASP ZAP Baseline | DAST pasivo | 21-10-2026 | 0 FAIL, 6 WARN-NEW, 61 PASS sobre `https://68.211.136.226` | Run 39685116213 (artefacto `informe-zap` tras corregir permisos del contenedor) |
+| OWASP ZAP Baseline | DAST pasivo | 21-10-2026 | Antes: 0 FAIL, 6 WARN-NEW, 61 PASS. Después del PR #2: 0 FAIL, 7 alertas (CSP solo por `style-src unsafe-inline`, COOP/CORP/COEP, cache y app moderna) | Runs 39685116213 y 39686269263 (artefacto `informe-zap`) |
 
 ## 3. Hallazgos y gestión
 | ID | Categoría | Descripción sin secretos | Riesgo | Archivo/ruta | Cambio propuesto | Estado |
@@ -29,12 +29,12 @@
 ## 4. Validación antes y después
 - Evidencia inicial (captura o artefacto): `resultado-semgrep` (21 hallazgos) del run 39683754980; 2 alertas CodeQL; 16 alertas Dependabot.
 - Pull request con corrección: PR #2 `security/remediacion-fsi` (pin de SHAs, permisos del workflow, `$host` de nginx, cabeceras CSP/Permissions-Policy y fix del artefacto ZAP).
-- Evidencia de reescaneo: Semgrep 21 → 1 hallazgo (solo el falso positivo F-02); CodeQL y Gitleaks en verde; DAST sin FAIL. Las 2 alertas de CodeQL cierran al reanalizar `main` tras el merge.
-- Riesgo residual y decisión: F-02 aceptado (uso no criptográfico de `math/rand`); F-05 en seguimiento con los PR automáticos de Dependabot; F-06 residual: COEP no aplicado (podría romper la carga de la SPA) y cacheo de estáticos en revisión.
+- Evidencia de reescaneo: Semgrep 21 → 1 hallazgo (solo el falso positivo F-02); CodeQL y Gitleaks en verde; DAST: Permissions-Policy resuelta y CSP enviada (resta `style-src unsafe-inline`); sin FAIL en ningún re-run. Las 2 alertas de CodeQL cierran al reanalizar `main` tras el merge.
+- Riesgo residual y decisión: F-02 aceptado (uso no criptográfico de `math/rand`); F-05 en seguimiento con los PR automáticos de Dependabot; F-06 residual: `style-src 'unsafe-inline'` (compatibilidad con la SPA Angular), COOP/CORP/COEP no aplicados (podrían romper la carga de recursos) y cacheo de estáticos en revisión.
 
 ## 5. Pentest autorizado
 - Hipótesis: la superficie expuesta (nginx + API Go) mantiene configuraciones heredadas de la línea base sin endurecer.
 - Entorno de pruebas aislado: staging propio `https://68.211.136.226`, escaneo pasivo ZAP baseline (sin ataques activos, `-m 1`, `-I`).
-- Solicitudes inocuas y respuestas observadas (sin datos personales): crawl pasivo del sitio (/, /robots.txt, /sitemap.xml, JS/CSS). 61 reglas PASS, 0 FAIL. 6 WARN-NEW: Cache-control [10015], CSP no seteada [10038], contenido cacheable [10049], Permissions-Policy no seteada [10063], app moderna [10109] y COEP [90004].
-- Resultado: validado (sin fallos) / requiere revisión: cabeceras faltantes, corregidas en el PR #2.
-- Recomendación y prueba de regresión: reejecutar el DAST tras el merge y verificar que CSP y Permissions-Policy desaparecen de los warnings; evaluar COEP y cacheo por separado.
+- Solicitudes inocuas y respuestas observadas (sin datos personales): crawl pasivo del sitio (/, /robots.txt, /sitemap.xml, JS/CSS). Antes: 61 PASS, 0 FAIL, 6 WARN-NEW (cache, CSP, cacheable, Permissions-Policy, app moderna, COEP). Después del PR #2: 0 FAIL y Permissions-Policy resuelta; CSP presente (aviso solo por `style-src unsafe-inline`).
+- Resultado: validado (sin fallos) / requiere revisión: cabeceras de aislamiento (COOP/CORP/COEP) y cacheo quedan como riesgo residual documentado.
+- Recomendación y prueba de regresión: reejecutar el baseline en cada cambio de nginx; evaluar quitar `'unsafe-inline'` de `style-src` y habilitar COOP/CORP tras validar que la SPA carga correctamente.
