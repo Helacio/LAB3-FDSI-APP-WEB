@@ -5,5 +5,5 @@
 - [x] Revisé dependencias y actualizaciones relevantes.
 - [x] Revisé autenticación y autorización si el cambio afecta APIs.
 - [x] Se ejecutaron pruebas funcionales y de regresión.
-- [ ] Si hay DAST, fue sobre mi staging autorizado.
+- [x] Si hay DAST, fue sobre mi staging autorizado.
 - [x] Vinculé hallazgos, decisiones de mitigación y evidencias.
