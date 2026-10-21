@@ -70,7 +70,7 @@ Identificación del alcance → SAST → detección de secretos → SCA → DAST
 - **Impacto en confidencialidad, integridad o disponibilidad:** menor superficie de defensa (XSS, clickjacking ya mitigado, fuga de funcionalidades del navegador).
 - **Pasos de validación segura en entorno propio:** reejecutar el baseline tras el cambio y confirmar que CSP/Permissions-Policy desaparecen de los warnings.
 - **Corrección (commit / pull request):** PR #2 — `Content-Security-Policy` y `Permissions-Policy` en `nginx/snippets/muvautomation.conf`; además se corrigió el permiso de escritura del contenedor ZAP para que genere el artefacto `informe-zap`.
-- **Resultado del reescaneo:** pendiente del re-run del DAST tras el merge (COEP y cacheo quedan como riesgo residual documentado).
+- **Resultado del reescaneo:** run 39686269263 tras el merge — Permissions-Policy resuelta; CSP enviada (ZAP solo avisa de `style-src unsafe-inline`); quedan COOP/CORP/COEP y cacheo como riesgo residual documentado.
 
 ## Reflexión final
 Las herramientas automatizadas detectaron rápido los problemas de configuración del pipeline (tags mutables, permisos) que una revisión manual pasa por alto, y Dependabot evidenció deuda de dependencias. Sin embargo, Semgrep generó ruido (falso positivo de `math/rand`) y el DAST pasivo por sí solo no valida lógica de negocio: el triage humano sigue siendo necesario. Para el futuro queda integrar el SAST como puerta (fail on error) una vez hecho el triage, y automatizar las actualizaciones de dependencias en el ciclo semanal.
