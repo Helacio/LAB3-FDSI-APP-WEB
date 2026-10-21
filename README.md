@@ -17,6 +17,19 @@ Stack: **Angular** (frontend) + **Go** (API) + **MongoDB** (NoSQL) + **RabbitMQ*
   (MFA se activa en el primer login, con el secreto/URL que muestra el portal).
 - Evidencias Blue Team en `evidence/blue/` (TLS, auth, bitácora, parches de nginx).
 
+## Seguridad (AppSec Lab)
+
+[![Deploy a Azure VM Ubuntu](https://github.com/Helacio/LAB3-FDSI-APP-WEB/actions/workflows/deploy.yml/badge.svg)](https://github.com/Helacio/LAB3-FDSI-APP-WEB/actions/workflows/deploy.yml)
+[![Seguridad estática - SAST y secretos](https://github.com/Helacio/LAB3-FDSI-APP-WEB/actions/workflows/seguridad-estatica.yml/badge.svg)](https://github.com/Helacio/LAB3-FDSI-APP-WEB/actions/workflows/seguridad-estatica.yml)
+
+- [Informe de seguridad](docs/SECURITY.md)
+- [Checklist de seguridad del PR](docs/CHECKLIST_PR.md)
+- [Informe técnico de hallazgos](docs/REPORTE_HALLAZGOS.md)
+- [Guía de integración AppSec](docs/README_INTEGRACION.md)
+
+Workflows de seguridad: `seguridad-estatica.yml` (Semgrep SAST + Gitleaks) y
+`dast-staging.yml` (ZAP baseline pasivo, manual vía `STAGING_URL`).
+
 ## Funcionamiento
 
 El portal permite consultar el inventario y el catálogo de comandos, registrar
