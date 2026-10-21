@@ -26,11 +26,12 @@ jobs:
           TARGET: ${{ vars.STAGING_URL }}
         run: |
           mkdir -p reports
+          chmod -R 777 reports
           docker run --rm -v "$PWD/reports:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t "$TARGET" -m 1 -r zap-report.html -J zap-report.json -I || true
       - name: Adjuntar resultados
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: informe-zap
           path: reports/
