@@ -114,6 +114,16 @@ if [ ! -f "$SECRETS_FILE" ]; then
   chmod 600 "$SECRETS_FILE"
   log "secretos generados en $SECRETS_FILE"
 fi
+# Contraseñas iniciales de los usuarios demo: aleatorias, solo en el servidor.
+# El backend ya no trae contraseñas embebidas (solo siembra si la BD esta vacia).
+for var in SEED_LECTOR_PASSWORD SEED_CAMBIADOR_PASSWORD; do
+  if ! grep -q "^${var}=" "$SECRETS_FILE"; then
+    echo "${var}=$(head -c 18 /dev/urandom | base64 | tr -d '\n/+=')" >> "$SECRETS_FILE"
+    log "${var} generado en $SECRETS_FILE (consultar con: sudo grep ${var} $SECRETS_FILE)"
+  fi
+done
+chown root:root "$SECRETS_FILE"
+chmod 600 "$SECRETS_FILE"
 
 systemctl daemon-reload
 systemctl enable muvautomation

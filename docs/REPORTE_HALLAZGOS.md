@@ -72,5 +72,22 @@ Identificación del alcance → SAST → detección de secretos → SCA → DAST
 - **Corrección (commit / pull request):** PR #2 — `Content-Security-Policy` y `Permissions-Policy` en `nginx/snippets/muvautomation.conf`; además se corrigió el permiso de escritura del contenedor ZAP para que genere el artefacto `informe-zap`.
 - **Resultado del reescaneo:** run 39686269263 tras el merge — Permissions-Policy resuelta; CSP enviada (ZAP solo avisa de `style-src unsafe-inline`); quedan COOP/CORP/COEP y cacheo como riesgo residual documentado.
 
+## Hallazgos F-07 a F-15 (segunda iteración, revisión OWASP Top 10)
+El detalle (evidencia, archivo y corrección) está en la tabla de [SECURITY.md](SECURITY.md#3-hallazgos-y-gestión). Resumen:
+
+| ID | OWASP | Severidad | Resumen | Validación de la corrección |
+|---|---|---|---|---|
+| F-07 | A07 | Alta | Evasión del rate limit de login rotando `X-Forwarded-For` | `TestIpClienteIgnoraXForwardedFor` |
+| F-08 | A07 | Alta | Fuerza bruta y replay del código TOTP | `TestPasoTOTPAntiReplay`, `TestLimiter` |
+| F-09 | A02/A07 | Crítica | Secretos JWT/HMAC por defecto en el código | el binario aborta sin `JWT_SECRET`/`BITACORA_KEY` ≥ 32 caracteres |
+| F-10 | A07 | Alta | Contraseñas semilla en código y README | Semgrep/Gitleaks sin hallazgos; contraseñas generadas en la VM |
+| F-11 | A01/A09 | Media | JWT aceptado en query string en todas las rutas | `TestStreamAuthRechazaTokenDeAcceso` |
+| F-12 | A03 | Media | Comandos fuera del catálogo y cuerpos sin límite | `TestDecodeJSONLimitesYCampos`; `POST /api/sessions` con comando arbitrario → 400 |
+| F-13 | A01 | Media | `/api/inventory.txt` público | `curl /api/inventory.txt` sin token → 401 |
+| F-14 | A05/A09 | Media | Bind público, credenciales en logs, errores internos expuestos, sin auditoría | `TestRedactarURL`; logs `audit evento=` |
+| F-15 | — | Media | Pipeline SAST/DAST sin puerta (`\|\| true`) | Los jobs fallan ante hallazgos; DAST con `.zap/rules.tsv` |
+
+F-05 (dependencias) queda **corregido**: npm audit y govulncheck en 0 tras actualizar Angular 22.2.7 y Go 1.27.4.
+
 ## Reflexión final
-Las herramientas automatizadas detectaron rápido los problemas de configuración del pipeline (tags mutables, permisos) que una revisión manual pasa por alto, y Dependabot evidenció deuda de dependencias. Sin embargo, Semgrep generó ruido (falso positivo de `math/rand`) y el DAST pasivo por sí solo no valida lógica de negocio: el triage humano sigue siendo necesario. Para el futuro queda integrar el SAST como puerta (fail on error) una vez hecho el triage, y automatizar las actualizaciones de dependencias en el ciclo semanal.
+Las herramientas automatizadas detectaron rápido los problemas de configuración del pipeline (tags mutables, permisos) que una revisión manual pasa por alto, y Dependabot evidenció deuda de dependencias. Sin embargo, Semgrep generó ruido (falso positivo de `math/rand`) y el DAST pasivo por sí solo no valida lógica de negocio: el triage humano sigue siendo necesario. En la segunda iteración el SAST, el SCA y el DAST pasaron a ser puertas reales (fail on error) y Dependabot quedó configurado semanalmente. La revisión manual guiada por OWASP encontró los hallazgos de mayor impacto (F-07 a F-09), que ninguna herramienta automática había reportado.

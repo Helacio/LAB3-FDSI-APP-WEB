@@ -1,24 +1,38 @@
-name: Seguridad estática - SAST y secretos
+name: Seguridad estática - SAST, SCA y secretos
 on:
   push:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1' # semanal: detecta CVE nuevas aunque no haya commits
 permissions:
   contents: read
+concurrency:
+  group: seguridad-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   sast:
     name: Semgrep (SAST)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
-      - name: Instalar Semgrep
-        run: python -m pip install --upgrade semgrep
-      - name: Análisis con reglas comunitarias
-        run: semgrep scan --config p/owasp-top-ten --config p/secrets --json --output semgrep.json || true
+      - name: Instalar Semgrep (versión fijada)
+        run: python -m pip install semgrep==1.186.0
+      - name: Análisis (falla ante cualquier hallazgo no triado)
+        # Puerta real: --error devuelve != 0 si hay hallazgos. Los falsos positivos
+        # aceptados se marcan en el código con `nosemgrep` y se justifican en docs/.
+        run: |
+          semgrep scan --metrics=off --error \
+            --config p/owasp-top-ten --config p/secrets --config p/golang \
+            --config p/typescript --config p/nginx --config p/github-actions \
+            --json --output semgrep.json
       - name: Publicar evidencia
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -26,15 +40,83 @@ jobs:
           name: resultado-semgrep
           path: semgrep.json
           if-no-files-found: warn
+
   secretos:
     name: Gitleaks (secret scanning)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Detección de secretos
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # En repositorios de organizaciones puede requerirse GITLEAKS_LICENSE.
+
+  sca-go:
+    name: govulncheck + tests (backend Go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: go vet
+        run: go vet ./...
+      - name: Tests de controles de seguridad
+        run: go test -race ./...
+      - name: govulncheck (falla si hay vulnerabilidades alcanzables)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  sca-npm:
+    name: npm audit + build (frontend Angular)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Instalar dependencias (sin scripts de instalación)
+        run: npm ci --ignore-scripts
+      - name: npm audit (falla con severidad high o critical)
+        run: npm audit --audit-level=high
+      - name: Build de producción
+        run: npm run build -- --configuration production
+
+  config-nginx:
+    name: Validar configuración nginx
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: nginx -t con certificado de prueba
+        run: |
+          tmp="$(mktemp -d)"
+          openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=ci -days 1 \
+            -keyout "$tmp/k.key" -out "$tmp/c.crt" 2>/dev/null
+          docker run --rm \
+            -v "$PWD/nginx/muvautomation.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/nginx/snippets:/etc/nginx/snippets:ro" \
+            -v "$tmp/c.crt:/etc/ssl/certs/muvautomation-chain.crt:ro" \
+            -v "$tmp/k.key:/etc/ssl/private/muvautomation.key:ro" \
+            nginx:stable nginx -t

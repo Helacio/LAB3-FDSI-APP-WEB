@@ -5,7 +5,12 @@ const TOKEN_KEY = 'muv_token';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const token = localStorage.getItem(TOKEN_KEY);
-  if (token && !req.url.includes('/api/auth/')) {
+  if (
+    token &&
+    (!req.url.includes('/api/auth/') ||
+      req.url.endsWith('/api/auth/stream-ticket') ||
+      req.url.endsWith('/api/auth/me'))
+  ) {
     req = req.clone({ setHeaders: { Authorization: `Bearer ${token}` } });
   }
   return next(req);

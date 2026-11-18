@@ -1,7 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
-import { AuthService } from './auth.service';
+import { map, Observable } from 'rxjs';
 import {
   Device,
   Kpis,
@@ -16,7 +15,6 @@ import {
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly http = inject(HttpClient);
-  private readonly auth = inject(AuthService);
   private readonly base = '/api';
 
   getStatus(): Observable<StatusInfo> {
@@ -67,8 +65,18 @@ export class ApiService {
     return this.http.get<StatusCheck[]>(`${this.base}/status/latest`);
   }
 
-  statusStreamUrl(runId: string): string {
-    const token = this.auth.token() ?? '';
-    return `${this.base}/status/stream?runId=${encodeURIComponent(runId)}&token=${encodeURIComponent(token)}`;
+  /**
+   * EventSource no permite cabeceras: se pide un ticket de un solo propósito
+   * (válido 1 minuto, solo para el SSE) en lugar de exponer el token de acceso en la URL.
+   */
+  statusStreamUrl(runId: string): Observable<string> {
+    return this.http
+      .post<{ ticket: string }>(`${this.base}/auth/stream-ticket`, {})
+      .pipe(
+        map(
+          ({ ticket }) =>
+            `${this.base}/status/stream?runId=${encodeURIComponent(runId)}&ticket=${encodeURIComponent(ticket)}`,
+        ),
+      );
   }
 }

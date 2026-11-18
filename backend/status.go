@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log"
-	mathrand "math/rand/v2"
+	mathrand "math/rand/v2" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used
 	"net/http"
 	"strconv"
 	"time"
@@ -233,8 +233,10 @@ func (m *statusManager) hasActiveRun(ctx context.Context) bool {
 
 // simulateCheck devuelve un estado ponderado. Los equipos del lab son ficticios,
 // por lo que no se hace un probe de red real.
+// Falso positivo aceptado (F-02): math/rand solo simula latencias ficticias;
+// los identificadores y secretos usan crypto/rand.
 func simulateCheck() (estado string, latencia int, detalle string) {
-	switch n := mathrand.IntN(100); {
+	switch n := mathrand.IntN(100); { // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used
 	case n < 78:
 		return "en línea", 40 + mathrand.IntN(220), "SNMP y SSH responden; contadores sin errores"
 	case n < 90:
@@ -270,7 +272,8 @@ func (s *server) handleStartStatusCheck(w http.ResponseWriter, r *http.Request) 
 
 	runID, total, err := s.status.StartRun(ctx, usuarioDe(r.Context()))
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "no se pudo iniciar la revision: " + err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "no se pudo iniciar la revision"})
+		log.Printf("error iniciando revision de estado: %v", err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"runId": runID, "total": total})
@@ -307,6 +310,10 @@ func (s *server) handleStatusRun(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	runID := r.PathValue("runId")
+	if len(runID) != 36 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "run no encontrado"})
+		return
+	}
 	var run statusRun
 	if err := s.db.Collection("status_runs").FindOne(ctx, bson.D{{Key: "runId", Value: runID}}).Decode(&run); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "run no encontrado"})

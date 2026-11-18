@@ -110,7 +110,17 @@ export class StatusMonitor implements OnInit, OnDestroy {
 
   private openStream(runId: string): void {
     this.closeStream();
-    const source = new EventSource(this.api.statusStreamUrl(runId));
+    this.api.statusStreamUrl(runId).subscribe({
+      next: (url) => this.connect(runId, url),
+      error: () => {
+        this.error.set('No se pudo abrir el canal en vivo.');
+        this.phase.set('error');
+      },
+    });
+  }
+
+  private connect(runId: string, url: string): void {
+    const source = new EventSource(url);
     this.source = source;
 
     source.onopen = () => this.live.set(true);
@@ -170,9 +180,14 @@ export class StatusMonitor implements OnInit, OnDestroy {
     });
 
     source.onerror = () => {
-      // EventSource reintenta solo; solo reflejamos que se perdió el vivo.
-      if (this.phase() === 'running') {
-        this.live.set(false);
+      if (this.phase() !== 'running') {
+        return;
+      }
+      this.live.set(false);
+      // El ticket es de un solo minuto: si el navegador ya no puede reconectar
+      // con él (CLOSED), se pide uno nuevo.
+      if (source.readyState === EventSource.CLOSED && this.source === source) {
+        setTimeout(() => this.phase() === 'running' && this.openStream(runId), 2000);
       }
     };
   }

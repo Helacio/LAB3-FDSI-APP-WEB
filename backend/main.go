@@ -21,6 +21,7 @@ import (
 
 const (
 	defaultPort     = "8080"
+	defaultHost     = "127.0.0.1" // solo nginx (local) debe alcanzar el backend
 	defaultMongoURI = "mongodb://127.0.0.1:27017"
 	defaultMongoDB  = "muvautomation"
 	defaultBroker   = "amqp://guest:guest@127.0.0.1:5672/"
@@ -57,6 +58,7 @@ type server struct {
 	jwtSecret   []byte
 	bitacoraKey []byte
 	limiter     *loginLimiter
+	mfaLimiter  *loginLimiter
 }
 
 func envOr(key, fallback string) string {
@@ -282,14 +284,26 @@ func (s *server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		Dispositivo string `json:"dispositivo"`
 		Comando     string `json:"comando"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+	if err := decodeJSON(w, r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "JSON invalido"})
 		return
 	}
 	in.Dispositivo = strings.TrimSpace(in.Dispositivo)
 	in.Comando = strings.TrimSpace(in.Comando)
-	if in.Dispositivo == "" || in.Comando == "" {
+	if in.Dispositivo == "" || in.Comando == "" || len(in.Dispositivo) > 64 || len(in.Comando) > 128 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dispositivo y comando son obligatorios"})
+		return
+	}
+
+	// Allowlist (A03): solo comandos del catalogo sobre dispositivos del inventario.
+	// Los valores se comparan por igualdad exacta (string), nunca como operadores.
+	if n, err := s.db.Collection("commands").CountDocuments(ctx, bson.D{{Key: "comando", Value: in.Comando}}); err != nil || n == 0 {
+		auditar("comando_rechazado", r, usuarioDe(r.Context()), in.Comando)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "comando fuera del catalogo permitido"})
+		return
+	}
+	if n, err := s.db.Collection("devices").CountDocuments(ctx, bson.D{{Key: "hostname", Value: in.Dispositivo}}); err != nil || n == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dispositivo no existe en el inventario"})
 		return
 	}
 
@@ -389,9 +403,19 @@ func seedData(ctx context.Context, db *mongo.Database) error {
 }
 
 func main() {
-	port := ":" + envOr("PORT", defaultPort)
+	port := envOr("LISTEN_HOST", defaultHost) + ":" + envOr("PORT", defaultPort)
 	uri := envOr("MONGO_URI", defaultMongoURI)
 	dbName := envOr("MONGO_DB", defaultMongoDB)
+
+	// Fail closed: sin secretos fuertes no se arranca (A02/A07).
+	jwtSecret, err := secretoObligatorio("JWT_SECRET")
+	if err != nil {
+		log.Fatalf("configuracion insegura: %v", err)
+	}
+	bitacoraKey, err := secretoObligatorio("BITACORA_KEY")
+	if err != nil {
+		log.Fatalf("configuracion insegura: %v", err)
+	}
 
 	client, err := mongo.Connect(options.Client().ApplyURI(uri).SetServerSelectionTimeout(5 * time.Second))
 	if err != nil {
@@ -401,9 +425,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.Ping(ctx, readpref.Primary()); err != nil {
-		log.Fatalf("MongoDB no responde en %s: %v", uri, err)
+		log.Fatalf("MongoDB no responde en %s: %v", redactarURL(uri), err)
 	}
-	log.Printf("conectado a MongoDB en %s", uri)
+	log.Printf("conectado a MongoDB en %s", redactarURL(uri))
 
 	db := client.Database(dbName)
 	if err := seedData(ctx, db); err != nil {
@@ -416,10 +440,10 @@ func main() {
 	brokerURL := envOr("BROKER_URL", defaultBroker)
 	broker, err := newRabbitBroker(brokerURL)
 	if err != nil {
-		log.Fatalf("no se pudo conectar a RabbitMQ en %s: %v", brokerURL, err)
+		log.Fatalf("no se pudo conectar a RabbitMQ en %s: %v", redactarURL(brokerURL), err)
 	}
 	defer broker.Close()
-	log.Printf("conectado a RabbitMQ en %s", brokerURL)
+	log.Printf("conectado a RabbitMQ en %s", redactarURL(brokerURL))
 
 	workers := 4
 	if n, err := strconv.Atoi(envOr("STATUS_WORKERS", "4")); err == nil && n > 0 {
@@ -431,15 +455,14 @@ func main() {
 	}
 	statusMgr := newStatusManager(db, broker, workers)
 
-	jwtSecret := envOr("JWT_SECRET", "dev-secret-cambiar-en-produccion")
-	bitacoraKey := []byte(envOr("BITACORA_KEY", "dev-bitacora-key-cambiar"))
 	s := &server{
 		db:          db,
 		broker:      broker,
 		status:      statusMgr,
-		jwtSecret:   []byte(jwtSecret),
+		jwtSecret:   jwtSecret,
 		bitacoraKey: bitacoraKey,
-		limiter:     newLoginLimiter(),
+		limiter:     newLoginLimiter(maxLoginIntentos),
+		mfaLimiter:  newLoginLimiter(maxVerifyIntentos),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
@@ -448,24 +471,27 @@ func main() {
 	mux.HandleFunc("GET /api/status", s.requireAuth(s.handleStatus))
 	mux.HandleFunc("GET /api/kpis", s.requireAuth(s.handleKpis))
 	mux.HandleFunc("GET /api/inventory", s.requireAuth(s.handleInventory))
-	mux.HandleFunc("GET /api/inventory.txt", s.handleInventoryTxt)
+	mux.HandleFunc("GET /api/inventory.txt", s.requireAuth(s.handleInventoryTxt))
+	mux.HandleFunc("POST /api/auth/stream-ticket", s.requireAuth(s.handleStreamTicket))
 	mux.HandleFunc("GET /api/commands", s.requireAuth(s.handleCommands))
 	mux.HandleFunc("GET /api/sessions", s.requireAuth(s.handleSessions))
 	mux.HandleFunc("GET /api/sessions/verify", s.requireAuth(s.handleVerifyBitacora))
 	mux.HandleFunc("POST /api/sessions", s.requireRole(rolCambiador, s.handleCreateSession))
 	mux.HandleFunc("GET /api/healthz", s.handleHealth)
 	mux.HandleFunc("POST /api/status/checks", s.requireRole(rolCambiador, s.handleStartStatusCheck))
-	mux.HandleFunc("GET /api/status/stream", s.requireAuth(s.handleStatusStream))
+	mux.HandleFunc("GET /api/status/stream", s.requireStreamAuth(s.handleStatusStream))
 	mux.HandleFunc("GET /api/status/runs", s.requireAuth(s.handleStatusRuns))
 	mux.HandleFunc("GET /api/status/runs/{runId}", s.requireAuth(s.handleStatusRun))
 	mux.HandleFunc("GET /api/status/latest", s.requireAuth(s.handleStatusLatest))
 
 	httpServer := &http.Server{
-		Addr:         port,
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              port,
+		Handler:           securityHeaders(mux),
+		ReadHeaderTimeout: 5 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	appCtx, appCancel := context.WithCancel(context.Background())

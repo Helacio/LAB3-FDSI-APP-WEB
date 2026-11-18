@@ -11,6 +11,7 @@ User=muvautomation
 Group=muvautomation
 WorkingDirectory=/opt/muvautomation
 EnvironmentFile=/etc/muvautomation/secrets.env
+Environment=LISTEN_HOST=127.0.0.1
 Environment=PORT=8080
 Environment=MONGO_URI=mongodb://127.0.0.1:27017
 Environment=MONGO_DB=muvautomation
@@ -27,6 +28,24 @@ PrivateTmp=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+PrivateDevices=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
