@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Validar destino autorizado
         env:
           TARGET: ${{ vars.STAGING_URL }}
@@ -22,13 +25,29 @@ jobs:
           print('Antes de continuar: el propietario debe haber autorizado el análisis:',u.hostname)
           PYV
       - name: Ejecutar baseline pasivo (sin ataques activos)
+        id: zap
         env:
           TARGET: ${{ vars.STAGING_URL }}
+        # Imagen fijada por digest (inmutable). Reglas en .zap/rules.tsv:
+        # FAIL = control obligatorio, WARN = riesgo residual documentado.
         run: |
           mkdir -p reports
-          chmod -R 777 reports
-          docker run --rm -v "$PWD/reports:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t "$TARGET" -m 1 -r zap-report.html -J zap-report.json -I || true
+          cp .zap/rules.tsv reports/rules.tsv
+          chmod 0777 reports
+          set +e
+          docker run --rm -v "$PWD/reports:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af \
+            zap-baseline.py -t "$TARGET" -m 1 -c rules.tsv -I \
+            -r zap-report.html -J zap-report.json -w zap-report.md
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          # 0 = sin FAIL; 1 = hay reglas FAIL; 2 = solo WARN (ignorado con -I); 3 = error de ZAP
+          echo "Código de salida de ZAP: $rc"
+      - name: Resumen en el job
+        if: always()
+        run: |
+          if [ -f reports/zap-report.md ]; then cat reports/zap-report.md >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Adjuntar resultados
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -36,3 +55,12 @@ jobs:
           name: informe-zap
           path: reports/
           if-no-files-found: warn
+      - name: Puerta de seguridad DAST
+        if: always()
+        env:
+          RC: ${{ steps.zap.outputs.rc }}
+        run: |
+          if [ "$RC" != "0" ]; then
+            echo "::error::ZAP reportó reglas FAIL o no pudo completar el análisis (rc=$RC). Revise informe-zap."
+            exit 1
+          fi

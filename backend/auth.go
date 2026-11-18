@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base32"
-	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -28,11 +29,14 @@ const (
 const (
 	accessTokenTTL = 15 * time.Minute
 	ticketTTL      = 2 * time.Minute
+	streamTTL      = 1 * time.Minute
 )
 
 const (
-	maxLoginIntentos = 10
-	ventanaLogin     = 5 * time.Minute
+	maxLoginIntentos  = 10
+	maxVerifyIntentos = 5
+	ventanaLogin      = 5 * time.Minute
+	totpPeriodo       = 30
 )
 
 type user struct {
@@ -42,6 +46,7 @@ type user struct {
 	TOTPSecret string `bson:"totpSecret,omitempty" json:"-"`
 	Pendiente  string `bson:"pendiente,omitempty" json:"-"`
 	MfaActivo  bool   `bson:"mfaActivo" json:"mfaActivo"`
+	UltimoPaso int64  `bson:"ultimoPasoTotp,omitempty" json:"-"`
 	CreadoEn   string `bson:"creadoEn" json:"creadoEn"`
 }
 
@@ -54,17 +59,18 @@ const (
 
 type authClaims struct {
 	Rol  string `json:"rol,omitempty"`
-	Tipo string `json:"tipo,omitempty"` // "acceso" | "mfa" | "enroll"
+	Tipo string `json:"tipo,omitempty"` // "acceso" | "mfa" | "enroll" | "sse"
 	jwt.RegisteredClaims
 }
 
 type loginLimiter struct {
 	mu       sync.Mutex
+	max      int
 	attempts map[string][]time.Time
 }
 
-func newLoginLimiter() *loginLimiter {
-	return &loginLimiter{attempts: map[string][]time.Time{}}
+func newLoginLimiter(max int) *loginLimiter {
+	return &loginLimiter{max: max, attempts: map[string][]time.Time{}}
 }
 
 func (l *loginLimiter) permitido(ip string) bool {
@@ -77,8 +83,12 @@ func (l *loginLimiter) permitido(ip string) bool {
 			vivos = append(vivos, t)
 		}
 	}
+	if len(vivos) == 0 {
+		delete(l.attempts, ip) // evita crecimiento ilimitado del mapa
+		return true
+	}
 	l.attempts[ip] = vivos
-	return len(vivos) < maxLoginIntentos
+	return len(vivos) < l.max
 }
 
 func (l *loginLimiter) registrar(ip string) {
@@ -148,16 +158,19 @@ func (s *server) validarToken(tokenStr string) (*authClaims, error) {
 	return c, nil
 }
 
+// ipCliente devuelve la IP real del cliente. X-Forwarded-For lo controla el cliente
+// (nginx solo lo extiende), por lo que NO se usa: un atacante podria rotarlo para
+// evadir el rate limit. Solo se confia en X-Real-IP cuando la conexion viene del
+// proxy local (nginx lo sobrescribe con $remote_addr).
 func ipCliente(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		partes := strings.Split(xff, ",")
-		if len(partes) > 0 {
-			return strings.TrimSpace(partes[0])
-		}
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		if real := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP"))); real != nil {
+			return real.String()
+		}
 	}
 	return host
 }
@@ -183,10 +196,8 @@ func usuarioDe(ctx context.Context) string {
 
 func (s *server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Solo cabecera Authorization: un token en la URL queda en logs/historial (A01/A09).
 		tokenStr := bearerDe(r)
-		if tokenStr == "" {
-			tokenStr = r.URL.Query().Get("token")
-		}
 		if tokenStr == "" {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "autenticacion requerida"})
 			return
@@ -202,9 +213,36 @@ func (s *server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// requireStreamAuth autentica el SSE. EventSource no permite cabeceras, asi que se
+// acepta en la query un ticket de un solo proposito (tipo "sse", 1 minuto) emitido
+// por POST /api/auth/stream-ticket; el token de acceso nunca viaja en la URL.
+func (s *server) requireStreamAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		c, err := s.validarToken(r.URL.Query().Get("ticket"))
+		if err != nil || c.Tipo != "sse" {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "ticket de stream invalido o vencido"})
+			return
+		}
+		ctx := context.WithValue(r.Context(), ctxUsuarioKey, c.Subject)
+		ctx = context.WithValue(ctx, ctxRolKey, c.Rol)
+		next(w, r.WithContext(ctx))
+	}
+}
+
+func (s *server) handleStreamTicket(w http.ResponseWriter, r *http.Request) {
+	usuario, rol := credenciales(r.Context())
+	ticket, err := s.emitirToken(usuario, rol, "sse", streamTTL)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "no se pudo emitir el ticket"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"ticket": ticket})
+}
+
 func (s *server) requireRole(rol string, next http.HandlerFunc) http.HandlerFunc {
 	return s.requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		if _, rolActual := credenciales(r.Context()); rolActual != rol {
+		if usuario, rolActual := credenciales(r.Context()); rolActual != rol {
+			auditar("acceso_denegado", r, usuario, r.Method+" "+r.URL.Path)
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "rol insuficiente: se requiere " + rol})
 			return
 		}
@@ -215,6 +253,7 @@ func (s *server) requireRole(rol string, next http.HandlerFunc) http.HandlerFunc
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := ipCliente(r)
 	if !s.limiter.permitido(ip) {
+		auditar("login_bloqueado", r, "", "rate limit")
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "demasiados intentos, espera 5 minutos"})
 		return
 	}
@@ -223,11 +262,16 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Usuario  string `json:"usuario"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+	if err := decodeJSON(w, r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "JSON invalido"})
 		return
 	}
 	in.Usuario = strings.TrimSpace(in.Usuario)
+	if in.Usuario == "" || len(in.Usuario) > 64 || in.Password == "" || len(in.Password) > 72 {
+		s.limiter.registrar(ip)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "credenciales invalidas"})
+		return
+	}
 
 	ctx, cancel := s.ctx(r.Context())
 	defer cancel()
@@ -235,12 +279,17 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var u user
 	err := s.db.Collection("users").FindOne(ctx, bson.D{{Key: "usuario", Value: in.Usuario}}).Decode(&u)
 	if err != nil {
+		// Comparacion contra un hash ficticio: iguala el tiempo de respuesta y evita
+		// enumerar usuarios por timing (A07).
+		_ = bcrypt.CompareHashAndPassword(hashFicticio, []byte(in.Password))
 		s.limiter.registrar(ip)
+		auditar("login_fallido", r, in.Usuario, "usuario inexistente")
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "credenciales invalidas"})
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(u.Hash), []byte(in.Password)) != nil {
 		s.limiter.registrar(ip)
+		auditar("login_fallido", r, in.Usuario, "password incorrecta")
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "credenciales invalidas"})
 		return
 	}
@@ -286,7 +335,7 @@ func (s *server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		Ticket string `json:"ticket"`
 		Codigo string `json:"codigo"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+	if err := decodeJSON(w, r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "JSON invalido"})
 		return
 	}
@@ -301,13 +350,24 @@ func (s *server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "ticket invalido o vencido"})
 		return
 	}
+	// Limite por usuario: sin el, un ticket de 2 min permite fuerza bruta del TOTP (A07).
+	if !s.mfaLimiter.permitido(c.Subject) {
+		auditar("mfa_bloqueado", r, c.Subject, "rate limit")
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "demasiados intentos, espera 5 minutos"})
+		return
+	}
 
 	ctx, cancel := s.ctx(r.Context())
 	defer cancel()
 
 	var u user
 	if err := s.db.Collection("users").FindOne(ctx, bson.D{{Key: "usuario", Value: c.Subject}}).Decode(&u); err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "usuario inexistente"})
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "ticket invalido o vencido"})
+		return
+	}
+	// Un ticket "mfa" no sirve si el usuario aun no enrolo, ni uno "enroll" si ya lo hizo.
+	if (c.Tipo == "mfa") != u.MfaActivo {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "ticket invalido o vencido"})
 		return
 	}
 
@@ -315,25 +375,44 @@ func (s *server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	if c.Tipo == "enroll" {
 		secreto = u.Pendiente
 	}
-	if secreto == "" || !totp.Validate(in.Codigo, secreto) {
+	paso, ok := pasoTOTP(in.Codigo, secreto, u.UltimoPaso)
+	if !ok {
+		s.mfaLimiter.registrar(c.Subject)
+		auditar("mfa_fallido", r, c.Subject, "codigo invalido o reutilizado")
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "codigo TOTP invalido"})
 		return
 	}
 
+	// Anti-replay: el paso TOTP se consume de forma atomica; un mismo codigo
+	// no puede usarse dos veces aunque siga dentro de su ventana de 30 s.
+	set := bson.D{{Key: "ultimoPasoTotp", Value: paso}}
 	if c.Tipo == "enroll" {
-		_, err = s.db.Collection("users").UpdateOne(ctx,
-			bson.D{{Key: "usuario", Value: u.Usuario}},
-			bson.D{{Key: "$set", Value: bson.D{
-				{Key: "totpSecret", Value: u.Pendiente},
-				{Key: "pendiente", Value: ""},
-				{Key: "mfaActivo", Value: true},
-			}}})
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "no se pudo activar MFA"})
-			return
-		}
-		u.Rol = c.Rol
+		set = append(set,
+			bson.E{Key: "totpSecret", Value: u.Pendiente},
+			bson.E{Key: "pendiente", Value: ""},
+			bson.E{Key: "mfaActivo", Value: true})
 	}
+	res, err := s.db.Collection("users").UpdateOne(ctx,
+		bson.D{
+			{Key: "usuario", Value: u.Usuario},
+			{Key: "$or", Value: bson.A{
+				bson.D{{Key: "ultimoPasoTotp", Value: bson.D{{Key: "$exists", Value: false}}}},
+				bson.D{{Key: "ultimoPasoTotp", Value: bson.D{{Key: "$lt", Value: paso}}}},
+			}},
+		},
+		bson.D{{Key: "$set", Value: set}})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "no se pudo completar la verificacion"})
+		return
+	}
+	if res.MatchedCount == 0 {
+		s.mfaLimiter.registrar(c.Subject)
+		auditar("mfa_fallido", r, c.Subject, "codigo reutilizado")
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "codigo TOTP invalido"})
+		return
+	}
+	s.mfaLimiter.limpiar(c.Subject)
+	auditar("login_exitoso", r, u.Usuario, c.Tipo)
 
 	token, err := s.emitirToken(u.Usuario, u.Rol, "acceso", accessTokenTTL)
 	if err != nil {
@@ -375,8 +454,44 @@ func seedUsers(ctx context.Context, db *mongo.Database) error {
 		})
 		return err
 	}
-	if err := seed("lector1", "LectorLab123!", rolLector); err != nil {
+	// Las contraseñas iniciales vienen del entorno (secrets.env), nunca del codigo (A07).
+	lectorPass := os.Getenv("SEED_LECTOR_PASSWORD")
+	cambiadorPass := os.Getenv("SEED_CAMBIADOR_PASSWORD")
+	if len(lectorPass) < 12 || len(cambiadorPass) < 12 {
+		log.Printf("aviso: SEED_LECTOR_PASSWORD/SEED_CAMBIADOR_PASSWORD ausentes o < 12 caracteres; no se crean usuarios iniciales")
+		return nil
+	}
+	if err := seed("lector1", lectorPass, rolLector); err != nil {
 		return err
 	}
-	return seed("cambiador1", "CambiadorLab123!", rolCambiador)
+	return seed("cambiador1", cambiadorPass, rolCambiador)
+}
+
+// hashFicticio se usa para igualar el tiempo de respuesta cuando el usuario no existe.
+var hashFicticio, _ = bcrypt.GenerateFromPassword([]byte("usuario-inexistente-timing"), bcrypt.DefaultCost)
+
+// pasoTOTP valida el codigo con tolerancia de +-1 periodo y devuelve el paso
+// (contador de 30 s) que coincidio. Rechaza pasos ya consumidos (anti-replay).
+func pasoTOTP(codigo, secreto string, ultimoPaso int64) (int64, bool) {
+	if secreto == "" || len(codigo) != 6 {
+		return 0, false
+	}
+	ahora := time.Now().UTC()
+	for _, delta := range []int{-1, 0, 1} {
+		t := ahora.Add(time.Duration(delta*totpPeriodo) * time.Second)
+		paso := t.Unix() / totpPeriodo
+		if paso <= ultimoPaso {
+			continue
+		}
+		ok, err := totp.ValidateCustom(codigo, secreto, t, totp.ValidateOpts{
+			Period:    totpPeriodo,
+			Skew:      0,
+			Digits:    otp.DigitsSix,
+			Algorithm: otp.AlgorithmSHA1,
+		})
+		if err == nil && ok {
+			return paso, true
+		}
+	}
+	return 0, false
 }

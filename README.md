@@ -13,8 +13,13 @@ Stack: **Angular** (frontend) + **Go** (API) + **MongoDB** (NoSQL) + **RabbitMQ*
 - **Roles**: `lector` (solo consultas) y `cambiador` (registra órdenes y lanza revisiones).
 - **Bitácora sellada**: hash chain + HMAC-SHA256; `GET /api/sessions/verify` detecta
   modificaciones.
-- **Usuarios demo (ficticios)**: `lector1/LectorLab123!` y `cambiador1/CambiadorLab123!`
-  (MFA se activa en el primer login, con el secreto/URL que muestra el portal).
+- **Usuarios demo (ficticios)**: `lector1` (rol lector) y `cambiador1` (rol cambiador).
+  Las contraseñas **no están en el código**: `install.sh` las genera al azar en
+  `/etc/muvautomation/secrets.env` (`SEED_LECTOR_PASSWORD`, `SEED_CAMBIADOR_PASSWORD`);
+  consultarlas en la VM con `sudo grep SEED_ /etc/muvautomation/secrets.env`.
+  MFA se activa en el primer login, con el secreto/URL que muestra el portal.
+- **Secretos obligatorios**: el backend no arranca si `JWT_SECRET` o `BITACORA_KEY`
+  faltan o tienen menos de 32 caracteres (no hay valores por defecto).
 - Evidencias Blue Team en `evidence/blue/` (TLS, auth, bitácora, parches de nginx).
 
 ## Seguridad (AppSec Lab)
@@ -171,8 +176,12 @@ router.status.jobs  ──►  workers Go (STATUS_WORKERS)
 
    ```bash
    cd backend
+   export JWT_SECRET="$(head -c 32 /dev/urandom | base64)"
+   export BITACORA_KEY="$(head -c 32 /dev/urandom | base64)"
+   export SEED_LECTOR_PASSWORD='<elige-una-de-12+-caracteres>'
+   export SEED_CAMBIADOR_PASSWORD='<elige-otra-de-12+-caracteres>'
    go run .
-   # API en http://127.0.0.1:8080
+   # API en http://127.0.0.1:8080 (solo escucha en localhost; LISTEN_HOST para cambiarlo)
    ```
 
    Variables opcionales: `PORT` (8080), `MONGO_URI` (`mongodb://127.0.0.1:27017`),
@@ -192,27 +201,30 @@ router.status.jobs  ──►  workers Go (STATUS_WORKERS)
 
 ## API
 
-Rutas públicas (sin token): `/api/healthz`, `/api/inventory.txt` y `/api/auth/*`.
-El resto requiere `Authorization: Bearer <token>`; los POST de escritura requieren
-rol `cambiador`. El stream SSE acepta el token por query `?token=` (EventSource no
-permite headers).
+Rutas públicas (sin token): `/api/healthz`, `/api/auth/login` y `/api/auth/verify`
+(con rate limit en nginx y en el backend). El resto requiere
+`Authorization: Bearer <token>` (el token **nunca** se acepta en la URL); los POST
+de escritura requieren rol `cambiador`. Como EventSource no permite cabeceras, el
+stream SSE usa un ticket de un solo propósito (`tipo=sse`, 1 minuto) obtenido con
+`POST /api/auth/stream-ticket`.
 
 | Método | Ruta | Descripción |
 |---|---|---|
 | POST | `/api/auth/login` | Login con usuario/password. Devuelve `{estado: enroll\|mfa, ticket}` (+ secreto/URL otpauth si es primer ingreso). |
 | POST | `/api/auth/verify` | Verifica código TOTP contra el ticket y devuelve el JWT de acceso. |
 | GET | `/api/auth/me` | Identidad y rol del token. |
+| POST | `/api/auth/stream-ticket` | Ticket de 1 minuto, válido solo para abrir el SSE. |
 | GET | `/api/healthz` | Estado del servicio y de MongoDB (público). |
 | GET | `/api/status` | Entorno, propietario y aviso (colección `settings`). |
 | GET | `/api/kpis` | Indicadores calculados desde MongoDB. |
 | GET | `/api/inventory` | Dispositivos (colección `devices`). |
-| GET | `/api/inventory.txt` | Mismo inventario en texto plano (público). |
+| GET | `/api/inventory.txt` | Mismo inventario en texto plano (requiere token). |
 | GET | `/api/commands` | Catálogo de comandos permitidos (colección `commands`). |
 | GET | `/api/sessions?limit=N` | Últimas órdenes de la bitácora (colección `sessions`). |
 | GET | `/api/sessions/verify` | Verifica la cadena de integridad (hash + HMAC) de la bitácora. |
-| POST | `/api/sessions` | Registra una orden (rol `cambiador`): `{ "dispositivo", "comando" }`. El operador sale del token. |
+| POST | `/api/sessions` | Registra una orden (rol `cambiador`): `{ "dispositivo", "comando" }`. Solo acepta comandos del catálogo y dispositivos del inventario. El operador sale del token. |
 | POST | `/api/status/checks` | Inicia una revisión (rol `cambiador`): encola un job por dispositivo. Devuelve `{ runId, total }`. |
-| GET | `/api/status/stream?runId=&token=` | Stream SSE con el progreso del run (`run.started`, `check.result`, `run.finished`). |
+| GET | `/api/status/stream?runId=&ticket=` | Stream SSE con el progreso del run (`run.started`, `check.result`, `run.finished`). |
 | GET | `/api/status/runs?limit=N` | Historial de revisiones. |
 | GET | `/api/status/runs/{runId}` | Estado del run y sus checks (fallback sin SSE). |
 | GET | `/api/status/latest` | Último estado conocido por dispositivo. |
@@ -222,7 +234,7 @@ Ejemplo con MFA (jq para extraer campos):
 ```bash
 RESP=$(curl -sk -X POST https://127.0.0.1:8080/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"usuario":"cambiador1","password":"CambiadorLab123!"}')
+  -d "{\"usuario\":\"cambiador1\",\"password\":\"$SEED_CAMBIADOR_PASSWORD\"}")
 TICKET=$(echo "$RESP" | python3 -c 'import json,sys;print(json.load(sys.stdin)["ticket"])')
 # codigo de 6 digitos desde la app autenticadora
 TOKEN=$(curl -sk -X POST https://127.0.0.1:8080/api/auth/verify \
