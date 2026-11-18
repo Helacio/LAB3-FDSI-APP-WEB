@@ -1,0 +1,39 @@
+$ go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+Vulnerability #1: GO-2026-6865
+    Found in: github.com/klauspost/compress@v1.19.2
+    Fixed in: github.com/klauspost/compress@v1.20.2
+Vulnerability #2: GO-2026-6859
+    Found in: net/http@go1.27.1
+    Fixed in: net/http@go1.27.4
+Vulnerability #3: GO-2026-6809
+    Found in: crypto/x509@go1.27.1
+    Fixed in: crypto/x509@go1.27.3
+Vulnerability #4: GO-2026-6617
+    Found in: net/http/internal/http2@go1.27.1
+    Fixed in: net/http/internal/http2@go1.27.2
+Vulnerability #5: GO-2026-6613
+    Found in: net/http@go1.27.1
+    Fixed in: net/http@go1.27.2
+Vulnerability #6: GO-2026-6612
+    Found in: net/http/internal/http2@go1.27.1
+    Fixed in: net/http/internal/http2@go1.27.2
+Vulnerability #7: GO-2026-6611
+    Found in: net/http/internal/http2@go1.27.1
+    Fixed in: net/http/internal/http2@go1.27.2
+Vulnerability #8: GO-2026-6610
+    Found in: net/http/internal/http2@go1.27.1
+    Fixed in: net/http/internal/http2@go1.27.2
+Vulnerability #9: GO-2026-6608
+    Found in: net/textproto@go1.27.1
+    Fixed in: net/textproto@go1.27.2
+Vulnerability #10: GO-2026-6607
+    Found in: crypto/tls@go1.27.1
+    Fixed in: crypto/tls@go1.27.2
+Vulnerability #11: GO-2026-6605
+    Found in: net/http@go1.27.1
+    Fixed in: net/http@go1.27.2
+Vulnerability #12: GO-2026-6603
+    Found in: net/http/internal/http2@go1.27.1
+    Fixed in: net/http/internal/http2@go1.27.2
+Your code is affected by 12 vulnerabilities from 1 module and the Go standard library.
+[código de salida: 1]

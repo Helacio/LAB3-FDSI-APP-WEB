@@ -1,0 +1,18 @@
+$ go vet ./... && go test -count=1 -v ./...
+=== RUN   TestIpClienteIgnoraXForwardedFor
+--- PASS: TestIpClienteIgnoraXForwardedFor (0.00s)
+=== RUN   TestIpClienteConfiaEnProxyLocal
+--- PASS: TestIpClienteConfiaEnProxyLocal (0.00s)
+=== RUN   TestLimiter
+--- PASS: TestLimiter (0.00s)
+=== RUN   TestPasoTOTPAntiReplay
+--- PASS: TestPasoTOTPAntiReplay (0.00s)
+=== RUN   TestDecodeJSONLimitesYCampos
+--- PASS: TestDecodeJSONLimitesYCampos (0.00s)
+=== RUN   TestRedactarURL
+--- PASS: TestRedactarURL (0.00s)
+=== RUN   TestStreamAuthRechazaTokenDeAcceso
+--- PASS: TestStreamAuthRechazaTokenDeAcceso (0.00s)
+PASS
+ok  	muvautomation/backend	0.082s
+[código de salida: 0]

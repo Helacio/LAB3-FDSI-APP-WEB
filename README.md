@@ -32,8 +32,39 @@ Stack: **Angular** (frontend) + **Go** (API) + **MongoDB** (NoSQL) + **RabbitMQ*
 - [Informe técnico de hallazgos](docs/REPORTE_HALLAZGOS.md)
 - [Guía de integración AppSec](docs/README_INTEGRACION.md)
 
-Workflows de seguridad: `seguridad-estatica.yml` (Semgrep SAST + Gitleaks) y
-`dast-staging.yml` (ZAP baseline pasivo, manual vía `STAGING_URL`).
+Workflows de seguridad: `seguridad-estatica.yml` (Semgrep SAST, Gitleaks, govulncheck,
+npm audit, tests de Go y `nginx -t`, todos como puerta) y `dast-staging.yml`
+(ZAP baseline pasivo con `.zap/rules.tsv`, manual vía `STAGING_URL`).
+
+### Resultados de las pruebas: antes vs después
+
+Ejecutadas con las mismas herramientas y reglas del pipeline sobre `main` (`9d54325`,
+antes) y sobre la rama `security/owasp-sast-dast` (después). La salida completa de
+cada ejecución está en [`evidence/appsec/antes/`](evidence/appsec/antes) y
+[`evidence/appsec/despues/`](evidence/appsec/despues).
+
+| Prueba | Antes | Después |
+|---|---|---|
+| Semgrep (SAST, OWASP Top 10 + secretos + Go/TS/nginx/Actions) | 1 hallazgo bloqueante (el pipeline lo ignoraba con `\|\| true`) | 0 hallazgos |
+| govulncheck (SCA backend Go) | 12 vulnerabilidades alcanzables | 0 |
+| npm audit (SCA frontend Angular) | 14 (2 critical, 7 high, 5 moderate) | 0 |
+| Tests de controles de seguridad | sin tests | 7 tests en verde |
+
+**SAST: Semgrep**
+
+![Semgrep antes y después](evidence/appsec/1-semgrep.png)
+
+**SCA backend: govulncheck**
+
+![govulncheck antes y después](evidence/appsec/2-govulncheck.png)
+
+**SCA frontend: npm audit**
+
+![npm audit antes y después](evidence/appsec/3-npm-audit.png)
+
+**Pruebas de regresión de seguridad: go test**
+
+![go test antes y después](evidence/appsec/4-go-test.png)
 
 ## Funcionamiento
 

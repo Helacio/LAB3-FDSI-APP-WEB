@@ -1,0 +1,27 @@
+$ npm audit --audit-level=high
+@angular/router  22.0.0 - 22.2.0
+Severity: high
+@hono/node-server  1.19.10 - 2.1.5
+Severity: moderate
+@modelcontextprotocol/sdk  <=1.31.0
+Severity: high
+body-parser  2.0.0 - 2.3.0
+Severity: high
+fast-uri  3.0.0 - 3.1.8
+Severity: moderate
+hono  <=4.13.15
+Severity: moderate
+ip-address  <=10.7.3
+Severity: moderate
+piscina  5.0.0 - 5.3.1
+Severity: critical
+qs  6.7.0 - 6.16.0
+Severity: moderate
+source-map-js  1.0.0 - 1.2.1
+Severity: high
+vite  8.0.0 - 8.1.5
+Severity: high
+zod  <4.6.6
+Severity: high
+14 vulnerabilities (5 moderate, 7 high, 2 critical)
+[código de salida: 1]

@@ -1,0 +1,7 @@
+$ semgrep scan --metrics=off --error --config p/owasp-top-ten --config p/secrets --config p/golang --config p/typescript --config p/nginx --config p/github-actions --exclude frontend/node_modules --exclude frontend/dist
+ • Findings: 1 (1 blocking)
+Ran 196 rules on 85 files: 1 finding.
+    backend/status.go
+    ❯❱ go.lang.security.audit.crypto.math_random.math-random-used
+            9┆ mathrand "math/rand/v2"
+[código de salida: 1]

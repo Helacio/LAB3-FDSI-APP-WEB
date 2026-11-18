@@ -1,0 +1,4 @@
+$ semgrep scan --metrics=off --error --config p/owasp-top-ten --config p/secrets --config p/golang --config p/typescript --config p/nginx --config p/github-actions --exclude frontend/node_modules --exclude frontend/dist
+ • Findings: 0 (0 blocking)
+Ran 197 rules on 96 files: 0 findings.
+[código de salida: 0]
